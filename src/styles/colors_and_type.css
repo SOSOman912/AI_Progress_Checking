@@ -1,0 +1,152 @@
+/* ==========================================================================
+   APC Studio — AI Progress Checking design tokens
+   Light, cool-neutral shell. Colour is reserved for widgets & components.
+   ========================================================================== */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap");
+
+:root {
+  /* ---------- Neutrals (shell) — cool grey, chroma ≤ 0.01 ---------- */
+  --n-0:   #ffffff;   /* surface: panels, cards, tables            */
+  --n-25:  #fafbfc;   /* raised-subtle: table header, panel header  */
+  --n-50:  #f4f6f8;   /* canvas: app background                     */
+  --n-100: #eceff2;   /* sunken: inputs on grey, segmented track    */
+  --n-150: #e3e7eb;   /* hairline                                   */
+  --n-200: #d3d9df;   /* strong line, input border hover            */
+  --n-300: #b6bfc7;   /* disabled glyph, scrollbar                  */
+  --n-400: #8c98a3;   /* tertiary text, placeholder                 */
+  --n-500: #66737e;   /* secondary text                             */
+  --n-600: #4a5661;   /* body strong                                */
+  --n-800: #25303a;   /* primary text                               */
+  --n-900: #151c23;   /* inverse surface: tooltip, keycap           */
+
+  /* viewport — the model always sits on a pale studio grey */
+  --vp-top:    #f1f3f5;
+  --vp-bottom: #dde2e7;
+  --vp-grid:   rgba(37, 48, 58, 0.07);
+
+  /* ---------- Brand / interactive ---------- */
+  --blue-50:  #eef6fb;
+  --blue-100: #d9ebf6;
+  --blue-200: #b3d5ea;
+  --blue-500: #1f78a8;
+  --blue-600: #176891;   /* primary action — inherited from ifc-qto */
+  --blue-700: #11506f;
+
+  /* ---------- Widget palette (oklch, L≈0.62 C≈0.13 for ink, L≈0.96 tint) ---------- */
+  /* Use ONLY inside components: pills, chips, dots, bars, highlights. */
+  --green-ink:  oklch(0.52 0.12 152);  --green-tint:  oklch(0.955 0.035 152);  --green-dot:  oklch(0.68 0.15 152);
+  --amber-ink:  oklch(0.55 0.11 75);   --amber-tint:  oklch(0.965 0.045 85);   --amber-dot:  oklch(0.78 0.15 75);
+  --red-ink:    oklch(0.53 0.16 25);   --red-tint:    oklch(0.958 0.03 25);    --red-dot:    oklch(0.64 0.19 25);
+  --violet-ink: oklch(0.50 0.13 295);  --violet-tint: oklch(0.955 0.03 295);   --violet-dot: oklch(0.64 0.15 295);
+  --teal-ink:   oklch(0.50 0.08 210);  --teal-tint:   oklch(0.955 0.025 210);  --teal-dot:   oklch(0.66 0.10 210);
+  --orange-ink: oklch(0.56 0.15 50);   --orange-tint: oklch(0.96 0.04 55);     --orange-dot: oklch(0.70 0.18 48);
+
+  /* viewport-only highlight colours */
+  --sel-3d:     #ff6a00;   /* selected solid (kept from ifc-qto)  */
+  --checked-3d: #3fb36b;   /* members of the active BQ line       */
+  --axis-x: #e5484d; --axis-y: #3fb36b; --axis-z: #2f7fd8;
+
+  /* ---------- Semantic: BQ node / value states ---------- */
+  --st-generated:  var(--n-500);      --st-generated-bg:  var(--n-100);
+  --st-calculated: var(--blue-600);   --st-calculated-bg: var(--blue-50);
+  --st-user:       var(--violet-ink); --st-user-bg:       var(--violet-tint);
+  --st-override:   var(--amber-ink);  --st-override-bg:   var(--amber-tint);
+  --st-missing:    var(--red-ink);    --st-missing-bg:    var(--red-tint);
+  --st-ambiguous:  var(--orange-ink); --st-ambiguous-bg:  var(--orange-tint);
+  --st-confirmed:  var(--green-ink);  --st-confirmed-bg:  var(--green-tint);
+  --st-custom:     var(--teal-ink);   --st-custom-bg:     var(--teal-tint);
+
+  /* automation level (BIM readiness) */
+  --lv-l1: var(--green-ink);  --lv-l1-bg: var(--green-tint);
+  --lv-l2: var(--amber-ink);  --lv-l2-bg: var(--amber-tint);
+  --lv-l3: var(--teal-ink);   --lv-l3-bg: var(--teal-tint);
+  --lv-na: var(--n-500);      --lv-na-bg: var(--n-100);
+
+  /* ---------- Foreground / background aliases ---------- */
+  --bg:          var(--n-50);
+  --surface:     var(--n-0);
+  --surface-2:   var(--n-25);
+  --sunken:      var(--n-100);
+  --line:        var(--n-150);
+  --line-strong: var(--n-200);
+  --fg1: var(--n-800);
+  --fg2: var(--n-500);
+  --fg3: var(--n-400);
+  --fg-inverse: #f3f5f7;
+  --accent: var(--blue-600);
+  --accent-soft: var(--blue-50);
+  --focus-ring: 0 0 0 3px rgba(31, 120, 168, 0.22);
+
+  /* ---------- Type ---------- */
+  --font-sans: "IBM Plex Sans", "Noto Sans TC", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-tc:   "Noto Sans TC", "IBM Plex Sans", sans-serif;
+
+  --fs-display: 28px;  --lh-display: 34px;
+  --fs-h1: 22px;       --lh-h1: 28px;
+  --fs-h2: 17px;       --lh-h2: 24px;
+  --fs-h3: 14px;       --lh-h3: 20px;
+  --fs-body: 13px;     --lh-body: 20px;
+  --fs-sm: 12px;       --lh-sm: 18px;
+  --fs-xs: 11px;       --lh-xs: 16px;
+  --fs-micro: 10px;    --lh-micro: 14px;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;
+  --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* control heights */
+  --h-xs: 22px; --h-sm: 28px; --h-md: 32px; --h-lg: 40px;
+
+  /* ---------- Radii ---------- */
+  --r-xs: 4px;     /* keycap, mini chip     */
+  --r-sm: 6px;     /* input, button         */
+  --r-md: 10px;    /* card, menu            */
+  --r-lg: 14px;    /* floating panel, dock  */
+  --r-pill: 999px;
+
+  /* ---------- Elevation ---------- */
+  --sh-0: 0 0 0 1px var(--line);
+  --sh-1: 0 1px 2px rgba(21, 28, 35, 0.06), 0 0 0 1px var(--line);
+  --sh-2: 0 4px 14px -4px rgba(21, 28, 35, 0.10), 0 0 0 1px var(--line);
+  --sh-float: 0 12px 32px -8px rgba(21, 28, 35, 0.16), 0 2px 6px rgba(21, 28, 35, 0.05), 0 0 0 1px rgba(21, 28, 35, 0.07);
+  --sh-pop: 0 18px 44px -10px rgba(21, 28, 35, 0.24), 0 0 0 1px rgba(21, 28, 35, 0.08);
+
+  /* glass for panels floating over the viewport */
+  --glass: rgba(255, 255, 255, 0.86);
+  --glass-blur: saturate(1.4) blur(14px);
+
+  /* ---------- Motion ---------- */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms;
+}
+
+/* ==========================================================================
+   Semantic element styles
+   ========================================================================== */
+.apc, .apc * { box-sizing: border-box; }
+.apc {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--fg1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 0;
+}
+.apc h1, .t-h1 { font-size: var(--fs-h1); line-height: var(--lh-h1); font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+.apc h2, .t-h2 { font-size: var(--fs-h2); line-height: var(--lh-h2); font-weight: 600; margin: 0; }
+.apc h3, .t-h3 { font-size: var(--fs-h3); line-height: var(--lh-h3); font-weight: 600; margin: 0; }
+.t-display { font-size: var(--fs-display); line-height: var(--lh-display); font-weight: 500; letter-spacing: -0.015em; }
+.apc p, .t-body { font-size: var(--fs-body); line-height: var(--lh-body); margin: 0; text-wrap: pretty; }
+.t-sm   { font-size: var(--fs-sm); line-height: var(--lh-sm); }
+.t-xs   { font-size: var(--fs-xs); line-height: var(--lh-xs); }
+.t-muted { color: var(--fg2); }
+.t-faint { color: var(--fg3); }
+/* eyebrow: section label inside panels ("LOCATION", "ROOM 401") */
+.t-eyebrow { font-size: var(--fs-micro); line-height: var(--lh-micro); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg3); }
+/* numbers: quantities, rates, coordinates, ids */
+.t-num, .apc code, .t-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.t-num { font-size: var(--fs-sm); }
+.apc code { font-size: 0.92em; background: var(--sunken); padding: 1px 5px; border-radius: var(--r-xs); }
+.t-label { font-size: var(--fs-xs); line-height: var(--lh-xs); color: var(--fg2); font-weight: 500; }
