@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <defs>
+    <linearGradient id="paper" x1="90" y1="48" x2="246" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F3F1"/>
+    </linearGradient>
+    <linearGradient id="scanbg" x1="128" y1="104" x2="210" y2="204" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E7F7F4"/>
+      <stop offset="1" stop-color="#D8EEEB"/>
+    </linearGradient>
+    <filter id="shadow" x="20" y="20" width="280" height="290" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#1D3042" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <g opacity="0.55" filter="url(#shadow)">
+    <rect x="47" y="73" width="160" height="205" rx="6" fill="#E6E4DF" transform="rotate(-10 127 175)"/>
+    <rect x="72" y="58" width="160" height="205" rx="6" fill="#EFEDE9" transform="rotate(-4 152 160)"/>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="91" y="42" width="164" height="219" rx="5" fill="url(#paper)" stroke="#DEDCD7"/>
+    <path d="M223 42H255V74" fill="#FAF9F7"/>
+    <path d="M223 42V74H255" stroke="#E2E0DC"/>
+  </g>
+  <g stroke="#D8D7D3" stroke-width="2" stroke-linecap="round">
+    <path d="M111 70H173"/>
+    <path d="M111 80H155"/>
+    <path d="M111 101H143"/>
+    <path d="M111 235H165"/>
+    <path d="M111 244H143"/>
+  </g>
+  <rect x="119" y="122" width="108" height="94" rx="8" fill="url(#scanbg)"/>
+  <g fill="#2E9B92">
+    <circle cx="146" cy="153" r="1.5" opacity="0.8"/>
+    <circle cx="153" cy="147" r="1.2" opacity="0.6"/>
+    <circle cx="160" cy="155" r="1.4" opacity="0.8"/>
+    <circle cx="168" cy="145" r="1.1" opacity="0.55"/>
+    <circle cx="175" cy="153" r="1.5" opacity="0.78"/>
+    <circle cx="182" cy="146" r="1.2" opacity="0.62"/>
+    <circle cx="190" cy="155" r="1.4" opacity="0.8"/>
+    <circle cx="198" cy="149" r="1.1" opacity="0.58"/>
+    <circle cx="201" cy="165" r="1.3" opacity="0.7"/>
+    <circle cx="190" cy="174" r="1.5" opacity="0.8"/>
+    <circle cx="181" cy="181" r="1.2" opacity="0.6"/>
+    <circle cx="171" cy="173" r="1.5" opacity="0.82"/>
+    <circle cx="162" cy="181" r="1.3" opacity="0.65"/>
+    <circle cx="152" cy="172" r="1.4" opacity="0.78"/>
+    <circle cx="143" cy="180" r="1.1" opacity="0.55"/>
+    <circle cx="137" cy="165" r="1.2" opacity="0.62"/>
+    <circle cx="147" cy="163" r="1.1" opacity="0.5"/>
+    <circle cx="194" cy="161" r="1.1" opacity="0.5"/>
+  </g>
+  <g stroke="#2E9B92" stroke-width="1.5" opacity="0.8">
+    <path d="M141 195L162 185L184 195L162 206L141 195Z"/>
+    <path d="M162 185V206"/>
+  </g>
+  <g stroke="#2E9B92" stroke-width="2.2" stroke-linecap="round">
+    <path d="M130 133V126H137"/>
+    <path d="M209 133V126H202"/>
+    <path d="M130 205V212H137"/>
+    <path d="M209 205V212H202"/>
+  </g>
+  <g>
+    <rect x="111" y="208" width="45" height="20" rx="4" fill="#2E9B92"/>
+    <text x="133.5" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#FFFFFF" letter-spacing="0.6">3D SCAN</text>
+  </g>
+  <g fill="#AAB0B5">
+    <circle cx="240" cy="231" r="2"/>
+    <circle cx="248" cy="231" r="2"/>
+    <circle cx="256" cy="231" r="2"/>
+  </g>
+</svg>

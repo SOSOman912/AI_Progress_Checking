@@ -75,17 +75,29 @@ export interface ViewportApi {
   isolate(ids?: string[]): void;
   hide(ids?: string[]): void;
   showAll(): void;
+  setPointCloud(offset?: [number, number, number] | null): void;
   pivot(ids?: string[]): void;
   setSectionBox(on: boolean, settings?: SectionBoxSettings): void;
   setSectionPlane(on: boolean, settings?: SectionPlaneSettings): void;
   setExplode(amount: number): void;
+  snapshot(width?: number, height?: number): string | null;
   dispose(): void;
 }
 
 const COL = { base: 0xeef0f2, sel: 0xff7a1f, mem: 0xa8dc9a, miss: 0xf2b8b5, check: 0x4fb26a };
 
+const scanRandom = (seed: number) => {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
 export function mount(container: HTMLDivElement, opts: ViewportOptions): ViewportApi {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
   renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
@@ -133,7 +145,17 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x6f7c88, transparent: true, opacity: 0.6 });
   opts.elements.forEach(e => {
     const [x, y, z, L, H, W] = e.box;
-    const g = new THREE.BoxGeometry(L, H, W);
+    const source = e.mesh;
+    const custom = !!source && source.positions.length >= 9 && source.indices.length >= 3;
+    const g = custom
+      ? (() => {
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute('position', new THREE.BufferAttribute(source!.positions, 3));
+          geometry.setIndex(new THREE.BufferAttribute(source!.indices, 1));
+          geometry.computeVertexNormals();
+          return geometry;
+        })()
+      : new THREE.BoxGeometry(L, H, W);
     const m = new THREE.MeshStandardMaterial({
       color: COL.base,
       roughness: 0.85,
@@ -147,13 +169,15 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
     });
     m.clippingPlanes = [];
     const mesh = new THREE.Mesh(g, m);
-    mesh.position.set(x, y, z);
+    mesh.position.set(custom ? 0 : x, custom ? 0 : y, custom ? 0 : z);
     basePos[e.id] = mesh.position.clone();
     mesh.userData.id = e.id;
-    const em = edgeMat.clone();
-    em.clippingPlanes = [];
-    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), em));
-    mesh.userData.edge = em;
+    if (!custom) {
+      const em = edgeMat.clone();
+      em.clippingPlanes = [];
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), em));
+      mesh.userData.edge = em;
+    }
     scene.add(mesh);
     meshes[e.id] = mesh;
   });
@@ -188,6 +212,8 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
       );
       persp.lookAt(target);
       persp.aspect = W / H;
+      persp.near = Math.max(0.05, radius / 4000);
+      persp.far = Math.max(500, radius * 8);
       persp.updateProjectionMatrix();
       return;
     }
@@ -222,6 +248,29 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
     opts.onRender?.(project);
   }
 
+  function snapshot(width = 640, height = 420): string | null {
+    render();
+    const src = renderer.domElement;
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = height;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    const grad = ctx.createLinearGradient(0, 0, 0, height);
+    grad.addColorStop(0, '#f7f9fb');
+    grad.addColorStop(0.68, '#dfe7ec');
+    grad.addColorStop(1, '#d2dde5');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+    const sw = src.width || width;
+    const sh = src.height || height;
+    const scale = Math.max(width / sw, height / sh);
+    const dw = sw * scale;
+    const dh = sh * scale;
+    ctx.drawImage(src, (width - dw) / 2, (height - dh) / 2, dw, dh);
+    return out.toDataURL('image/jpeg', 0.82);
+  }
+
   let state: ViewportPaint = { sel: null, members: [], missing: [], checked: [] };
 
   function paint(s: Partial<ViewportPaint>) {
@@ -240,9 +289,69 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
         !state.missing.includes(id);
       m.material.transparent = !!dim;
       m.material.opacity = dim ? 0.55 : 1;
-      m.userData.edge.opacity = dim ? 0.25 : 0.6;
+      if (m.userData.edge) m.userData.edge.opacity = dim ? 0.25 : 0.6;
     });
     paintCaps();
+    render();
+  }
+
+  let cloud: THREE.Points | null = null;
+  function setPointCloud(offset?: [number, number, number] | null) {
+    if (cloud) {
+      scene.remove(cloud);
+      cloud.geometry.dispose();
+      (cloud.material as THREE.PointsMaterial).dispose();
+      cloud = null;
+    }
+    if (!offset) {
+      render();
+      return;
+    }
+    const [ox, oy, oz] = offset;
+    const random = scanRandom(20261120);
+    const positions: number[] = [];
+    opts.elements.forEach(e => {
+      const [x, y, z, L, Hh, Wd] = e.box;
+      const per = 320;
+      for (let i = 0; i < per; i += 1) {
+        const face = Math.floor(random() * 6);
+        let px: number;
+        let py: number;
+        let pz: number;
+        if (face < 2) {
+          px = (random() - 0.5) * L;
+          py = (random() - 0.5) * Hh;
+          pz = (face === 0 ? 1 : -1) * (Wd / 2);
+        } else if (face < 4) {
+          px = (random() - 0.5) * L;
+          py = (face === 2 ? 1 : -1) * (Hh / 2);
+          pz = (random() - 0.5) * Wd;
+        } else {
+          px = (face === 4 ? 1 : -1) * (L / 2);
+          py = (random() - 0.5) * Hh;
+          pz = (random() - 0.5) * Wd;
+        }
+        const jitter = 0.014;
+        positions.push(
+          x + px + ox + (random() - 0.5) * jitter,
+          y + py + oy + (random() - 0.5) * jitter,
+          z + pz + oz + (random() - 0.5) * jitter
+        );
+      }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+      color: 0x1f6f9c,
+      size: 0.055,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
+    cloud = new THREE.Points(geo, mat);
+    cloud.name = 'point-cloud-overlay';
+    scene.add(cloud);
     render();
   }
 
@@ -412,8 +521,10 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
     Object.values(meshes).forEach(m => {
       m.material.clippingPlanes = list;
       m.material.needsUpdate = true;
-      m.userData.edge.clippingPlanes = list;
-      m.userData.edge.needsUpdate = true;
+      if (m.userData.edge) {
+        m.userData.edge.clippingPlanes = list;
+        m.userData.edge.needsUpdate = true;
+      }
     });
     boxHelper.visible = boxOn;
   }
@@ -1014,6 +1125,7 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
       });
       render();
     },
+    setPointCloud,
     pivot,
     setSectionBox(on, settings) {
       if (!on) {
@@ -1039,6 +1151,7 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
       if (settings) applySectionPlane(settings);
     },
     setExplode,
+    snapshot,
     dispose() {
       ro.disconnect();
       window.removeEventListener('keydown', walk);

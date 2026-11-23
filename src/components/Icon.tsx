@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import {
+  ArrowLeft,
   ArrowLeftRight,
   ArrowUpDown,
   BadgeCheck,
@@ -136,6 +137,7 @@ const REGISTRY = {
   'building-2': Building2,
   'clipboard-check': ClipboardCheck,
   'credit-card': CreditCard,
+  'arrow-left': ArrowLeft,
   'arrow-left-right': ArrowLeftRight,
   'arrow-up-down': ArrowUpDown,
   crosshair: Crosshair,

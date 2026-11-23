@@ -10,6 +10,7 @@ import {
 import { ModelView } from './views/ModelView';
 import { MeasurementLibrary } from './views/MeasurementLibrary';
 import { DocumentManagement } from './views/DocumentManagement';
+import { AiScanning } from './views/AiScanning';
 import { ProjectHome, type NewProjectInput } from './views/ProjectHome';
 import { demoData, type ProjectData } from './lib/demo';
 import { loadPermissions, withMoneyPermission } from './lib/permissions';
@@ -236,6 +237,8 @@ export default function App() {
           </div>
         ) : route === 'bill' ? (
           <DocumentManagement key={docHomeKey} mode={docTool} />
+        ) : route === 'data' ? (
+          <AiScanning projectName={data.project.name} projectNumber={data.project.contract} />
         ) : (
           <PageStub />
         )}

@@ -53,6 +53,7 @@ export interface ElementData {
   box: Box;
   openings: number;
   pset: Record<string, string>;
+  mesh?: { positions: Float32Array; indices: Uint32Array };
   evidence?: Evidence;
   drawingDiff?: DrawingDiff;
   props?: ElementDemoProps;
