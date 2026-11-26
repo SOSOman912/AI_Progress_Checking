@@ -26,6 +26,8 @@ export interface CeLink {
   ceName: string;
   title: string;
   amount: number;
+  /** Quantity change extracted from the CE document. */
+  quantity?: number;
   date?: string;
   reference?: string;
   targetType?: CeTargetType;

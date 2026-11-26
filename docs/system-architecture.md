@@ -336,6 +336,40 @@ Storage:
 `apc.subletting-contracts.v1:<projectId>`
 `apc.subletting-schedule.v1:<projectId>`
 
+### 4.9 Pricing mode, number formatting and CE summary
+
+**Pricing mode (per project)**
+
+- The BQ / Activity Schedule import dialog asks whether pricing data is imported: `Import prices` or `Quantity only`
+- The choice is stored at `apc.pricing-mode.v1:<projectId>` and broadcast through a `apc:pricing-mode` window event so every page reacts immediately
+- `quantity-only` removes every money column from every table: Rate, Amount, Amount (BIM), CE, Final Amount, cost result values, subletting values and the subletting schedule money columns
+- Money visibility in the 3D model view also requires the `canViewMoney` permission, i.e. `priced` **and** a non-member role
+
+**Canonical BQ / AS column order** (`src/components/BqPanels.tsx`)
+
+`Item · Description · Unit · Qty · Qty (BIM) · Rate · Amount HK$ · Amount HK$ (BIM) · CE · Final Amount HK$`
+
+When the same measure comes from two sources, the BQ/AS value is always the leading column and the BIM value follows it.
+
+**Number formatting** (`src/lib/numberFormat.ts`)
+
+- Every number printed on a BQ / AS table is a whole number: a fractional part of 0.4 or less truncates down, any other fraction uses normal half-up rounding
+- Mapping model / BIM quantity views keep two decimals
+- Quantity-only mode leaves quantities untouched and simply drops the money columns
+
+**CE AI OCR result**
+
+- Image uploads are downscaled (max 1200 px, JPEG) and stored on the CE record, so the original document can be shown next to the OCR result
+- `regions[]` on the CE record carries `{label, value, x, y, w, h, confidence}` as page percentages; the result screen draws them over the document image for before/after comparison
+- Quantity changes are extracted: per-item `qty`, `fields.quantity`, `record.quantity`, and `CeLink.quantity`
+- CE home table columns: CE document · CE number · Qty · Amount (money mode only) · Received · Status
+
+**Compensation Event Summary** (`src/views/Preprocessing.tsx`)
+
+- Option A/C preprocessing result page has two second-level tabs: `Activity Schedule` and `Compensation Event Summary`
+- The CE summary hides the left schedule list and lists every CE linked to that table (CE No., Description, Date, Reference, linked item count, Net Amount)
+- A footer row totals the net amount of all linked CEs; quantities are not shown here
+
 ---
 
 ## 5. Project-scoped storage
@@ -351,6 +385,7 @@ All working data is namespaced by project ID. The project list and active select
 | CE links | `apc.ce-links.v2:<projectId>` | Project |
 | BQ bill ↔ Schedule mapping | `apc.bq-activity-bill-map.v2:<projectId>` | Project |
 | Subletting contracts | `apc.subletting-contracts.v1:<projectId>` | Project |
+| Pricing mode (import prices / quantity only) | `apc.pricing-mode.v1:<projectId>` | Project |
 | Subletting schedule (BK-CP03.02-FR01) | `apc.subletting-schedule.v1:<projectId>` | Project |
 | Subcontractor list | `apc.subcontractors.v1:<projectId>` | Project |
 | Mapping scenarios | `apc.mapping-scenarios.v2:<projectId>` | Project |
@@ -431,6 +466,8 @@ Rules:
 | `src/views/SublettingPage.tsx` | Subletting schedule and contract views, subcontractor list, Activity Schedule assignment |
 | `src/components/SublettingSchedule.tsx` | BK-CP03.02-FR01 schedule table with grouped headers, inline edit, required-field highlighting |
 | `src/lib/sublettingSchedule.ts` | Subletting schedule row model, column definitions, saving/loss + totals, project storage |
+| `src/lib/pricingMode.ts` | Project pricing mode (`priced` / `quantity-only`), storage and `usePricingMode` hook |
+| `src/lib/numberFormat.ts` | BQ/AS whole-number rounding rule, 2dp formatting for mapping model, number parsing |
 | `src/lib/subcontractors.ts` | Project-scoped subcontractor list model and storage |
 | `src/views/Preprocessing.tsx` | Structured BQ table, BQ-Activity mapping, Cleanse, CE Detail |
 | `src/components/FlowTabs.tsx` | Client and Sub-Contractor tab containers |

@@ -15,6 +15,7 @@ import { ProjectHome, type NewProjectInput } from './views/ProjectHome';
 import { demoData, type ProjectData } from './lib/demo';
 import { loadPermissions, withMoneyPermission } from './lib/permissions';
 import { loadProjects, saveProjects, type ProjectRecord } from './lib/projects';
+import { usePricingMode } from './lib/pricingMode';
 
 type AppRoute = 'home' | ToolId;
 
@@ -40,6 +41,8 @@ export default function App() {
       return null;
     }
   });
+  const [pricingMode] = usePricingMode(activeProject?.id);
+  const canViewMoney = permissions.canViewMoney && pricingMode === 'priced';
   const [route, setRoute] = useState<AppRoute>(readRoute);
   const [docTool, setDocTool] = useState<DocTool>('pricing');
   const [docHomeKey, setDocHomeKey] = useState(0);
@@ -288,7 +291,7 @@ export default function App() {
               onCloseDrawing: () => setDrawingSheet(null),
               onQtyChange: editQty,
               onRateChange: editRate,
-              showMoney: permissions.canViewMoney
+              showMoney: canViewMoney
             }}
           />
         ) : (

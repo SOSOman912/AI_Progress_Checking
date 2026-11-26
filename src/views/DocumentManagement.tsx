@@ -5,6 +5,7 @@ import { SublettingPage } from './SublettingPage';
 import { FlowTabs, type DocFlow } from '../components/FlowTabs';
 import type { NecOption } from '../lib/projects';
 import { documentsStorageKey } from '../lib/projectStorage';
+import { PRICING_MODE_INFO, usePricingMode } from '../lib/pricingMode';
 import {
   ACTIVITY_ITEMS,
   BqRecordTable,
@@ -202,6 +203,7 @@ export function DocumentManagement({
   const [missingTypes, setMissingTypes] = useState<DocKind[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [recordQuery, setRecordQuery] = useState('');
+  const [pricingMode, setPricingMode] = usePricingMode(projectId);
   const isActivityFlow = activeFlow === 'activity';
   const activityMain = necOption === 'A' || necOption === 'C';
   const isBqReference = activityMain && !isActivityFlow;
@@ -895,6 +897,25 @@ export function DocumentManagement({
                       </label>
                     );
                   })}
+                </div>
+              </div>
+
+              <div className="apc-importopt">
+                <div className="apc-importopt__copy">
+                  <b>Pricing data</b>
+                  <span>{PRICING_MODE_INFO[pricingMode].description}</span>
+                </div>
+                <div className="apc-seg apc-seg--sm">
+                  {(['priced', 'quantity-only'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={pricingMode === mode ? 'on' : ''}
+                      onClick={() => setPricingMode(mode)}
+                    >
+                      {PRICING_MODE_INFO[mode].label}
+                    </button>
+                  ))}
                 </div>
               </div>
 

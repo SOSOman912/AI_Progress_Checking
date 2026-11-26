@@ -1440,9 +1440,11 @@ table.apc-bqdetails__scope { display: table; grid-template-columns: none; gap: 0
 .apc-pre__reportpanel { min-height: 0; }
 .apc-pre__right .apc-pre__kpi > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apc-pre__actions { padding: 8px 12px; }
-.apc-cetable th:nth-child(2) { width: 150px; }
-.apc-cetable th:nth-child(3) { width: 122px; }
-.apc-cetable th:nth-child(4) { width: 112px; }
+.apc-cetable th:nth-child(2) { width: 140px; }
+.apc-cetable th:nth-child(3) { width: 78px; }
+.apc-cetable th:nth-child(4) { width: 128px; }
+.apc-cetable th:nth-child(5) { width: 118px; }
+.apc-cetable th:nth-child(6) { width: 110px; }
 .apc-cetable th:last-child { width: 42px; }
 .apc-ce-result { display: flex; flex-direction: column; gap: 16px; }
 .apc-ce-result__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
@@ -3276,3 +3278,46 @@ table.apc-grid th {
 .apc-schedtable__actionhead { width: 60px; }
 .apc-schedtable .apc-records__empty { padding: 40px 8px !important; text-align: center; cursor: default; }
 .apc-schedtable__actions { width: 60px; padding: 0 3px !important; text-align: center; white-space: nowrap; }
+
+
+/* Import pricing option (BQ / Activity Schedule) */
+.apc-importopt { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--line); background: #fbfcfd; }
+.apc-importopt__copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.apc-importopt__copy b { color: var(--fg1); font-size: 11px; font-weight: 600; }
+.apc-importopt__copy span { color: var(--fg3); font-size: 10px; line-height: 1.45; }
+
+/* Preprocessing result second level tabs */
+.apc-cleanse__subtabs { min-height: 44px; padding: 7px 28px; }
+
+/* Compensation Event Summary table (shares BQ table look) */
+.apc-cesummary tbody tr.is-openable { cursor: pointer; }
+.apc-cesummary__empty { padding: 40px 10px !important; color: var(--fg3); text-align: center; }
+.apc-cesummary tfoot td { padding: 10px; border-top: 1px solid var(--line); background: #f7f9fb; color: var(--fg1); font-size: 11px; font-weight: 600; }
+.apc-cesummary tfoot td.num { text-align: right; font-family: var(--font-mono); }
+
+
+/* Quantity-only mode: keep subletting assignment column widths stable without the Value column */
+.apc-subitems--assign.is-nomoney th:nth-child(3) { width: 50px; }
+.apc-subitems--assign.is-nomoney th:nth-child(4) { width: 62px; }
+.apc-subitems--assign.is-nomoney th:nth-child(5) { width: 88px; }
+.apc-subitems--assign.is-nomoney th:nth-child(6) { width: 176px; }
+
+
+/* CE result: original document with AI OCR extraction overlay */
+.apc-cedoc { padding: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.apc-cedoc__head { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.apc-cedoc__head > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.apc-cedoc__head b { overflow: hidden; color: var(--fg1); font-size: 11.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.apc-cedoc__head span { color: var(--fg3); font-size: 9.5px; }
+.apc-cedoc__count { flex-shrink: 0; padding: 3px 9px; border-radius: 999px; background: var(--blue-50); color: var(--blue-700); font-size: 9px; font-weight: 600; white-space: nowrap; }
+.apc-cedoc__page { position: relative; flex: 1; min-height: 300px; max-height: 560px; overflow: auto; background: #eef1f4; }
+.apc-cedoc__image { display: block; width: 100%; height: auto; }
+.apc-cedoc__mock { padding: 26px 24px 30px; background: #fff; }
+.apc-cedoc__mock h3 { margin: 16px 0 14px; }
+.apc-cedoc__region { position: absolute; display: flex; align-items: center; gap: 4px; padding: 0 4px; border: 1px solid var(--blue-500); border-radius: 4px; background: rgba(31,120,168,.13); box-shadow: 0 0 0 2px rgba(31,120,168,.12); overflow: hidden; pointer-events: none; }
+.apc-cedoc__region i { position: absolute; top: 0; left: 0; padding: 1px 4px; border-radius: 3px 0 3px 0; background: var(--blue-600); color: #fff; font-size: 7.5px; font-style: normal; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+.apc-cedoc__region b { margin-top: 8px; overflow: hidden; color: var(--blue-700); font-size: 8.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.apc-cedoc .apc-ce-linked { margin: 0 14px 16px; }
+
+/* CE home table quantity / amount columns */
+.apc-cetable th.num, .apc-cetable td.num { text-align: right; font-family: var(--font-mono); }

@@ -5,6 +5,8 @@ import { DraggablePanel } from '../components/DraggablePanel';
 import { linksForActivity, linksForBq } from '../lib/ceLinks';
 import { SMM_SECTIONS } from '../lib/measurementLibrary';
 import { projectStorageKey } from '../lib/projectStorage';
+import { usePricingMode } from '../lib/pricingMode';
+import { formatBqNumber } from '../lib/numberFormat';
 import { demoData, type BillLine } from '../lib/demo';
 
 type DocKind = 'bq' | 'sp' | 'pp' | 'drawing';
@@ -399,6 +401,8 @@ export function PreprocessingResult({
           name: DEFAULT_NAMES.bq
         }
       ];
+  const [pricingMode] = usePricingMode(projectId);
+  const moneyVisible = pricingMode === 'priced';
   const [activeDocId, setActiveDocId] = useState(viewerDocs[0].id);
   const [viewerPage, setViewerPage] = useState(1);
   const [activeCheck, setActiveCheck] = useState<string | null>(null);
@@ -764,14 +768,14 @@ export function PreprocessingResult({
                       <th>Description</th>
                       <th>Unit</th>
                       <th className="num">Qty</th>
-                      <th className="num">Rate (HK$)</th>
-                      <th className="num">Amount (HK$)</th>
+                      {moneyVisible && <th className="num">Rate (HK$)</th>}
+                      {moneyVisible && <th className="num">Amount (HK$)</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {selectedBill?.sections.map(section => [
                       <tr key={`${section.id}-head`} className="apc-mapbqtable__sectionrow">
-                        <td colSpan={6}>
+                        <td colSpan={moneyVisible ? 6 : 4}>
                           <span className="apc-mapbqtable__sectiontitle">
                             <b>{section.no}</b> {section.name}
                           </span>
@@ -796,8 +800,12 @@ export function PreprocessingResult({
                             <td>{item.label}</td>
                             <td>{item.unit || '—'}</td>
                             <td className="num">{formatMoney(qty)}</td>
-                            <td className="num">{formatMoney(item.rate)}</td>
-                            <td className="num">{formatMoney(amount)}</td>
+                            {moneyVisible && (
+                              <td className="num">{formatMoney(item.rate)}</td>
+                            )}
+                            {moneyVisible && (
+                              <td className="num">{formatMoney(amount)}</td>
+                            )}
                           </tr>
                         );
                       })
@@ -1473,6 +1481,11 @@ export function CleanseBqView({
   sampleBq?: boolean;
 }) {
   const isActivity = heading === 'Cleanse Activity Schedule';
+  const [pricingMode] = usePricingMode(projectId);
+  const moneyVisible = pricingMode === 'priced';
+  const [resultTab, setResultTab] = useState<'schedule' | 'ce-summary'>(
+    'schedule'
+  );
   const lines = useMemo(
     () =>
       isActivity
@@ -1578,6 +1591,18 @@ export function CleanseBqView({
       : sectionSlices.find(section => section.id === activeSection) ?? null;
   const visibleLines = activeSlice?.lines ?? lines;
 
+  const ceSummary = useMemo(() => {
+    const seen = new Set<string>();
+    return links.filter(link => {
+      if (seen.has(link.ceId)) return false;
+      seen.add(link.ceId);
+      return true;
+    });
+  }, [links]);
+
+  const ceNetTotal = ceSummary.reduce((sum, link) => sum + link.amount, 0);
+  const showCeTabs = isActivity || sampleBq;
+
   return (
     <div className="apc-cleanse">
       <div className="apc-cleanse__bar">
@@ -1597,8 +1622,32 @@ export function CleanseBqView({
         </div>
       </div>
 
+      {showCeTabs && (
+        <div className="apc-docpage__tabsbar apc-docpage__tabsbar--sub apc-cleanse__subtabs">
+          <div className="apc-seg apc-seg--sm">
+            <button
+              className={resultTab === 'schedule' ? 'on' : ''}
+              onClick={() => setResultTab('schedule')}
+            >
+              {isActivity ? 'Activity Schedule' : 'Bill of Quantities'}
+            </button>
+            <button
+              className={resultTab === 'ce-summary' ? 'on' : ''}
+              onClick={() => setResultTab('ce-summary')}
+            >
+              Compensation Event Summary
+            </button>
+          </div>
+          <span className="apc-docpage__subhint">
+            {ceSummary.length} compensation event
+            {ceSummary.length === 1 ? '' : 's'} linked to this {docLabel}
+          </span>
+        </div>
+      )}
+
       <div className="apc-cleanse__content">
-        <nav className="apc-billsnav" aria-label={isActivity ? 'Schedules' : 'Bills and sections'}>
+        {resultTab === 'schedule' && (
+          <nav className="apc-billsnav" aria-label={isActivity ? 'Schedules' : 'Bills and sections'}>
           <div className="apc-billsnav__head">
             <b>{isActivity ? 'Schedules' : 'Bills & sections'}</b>
             <span>{sectionSlices.length}</span>
@@ -1636,16 +1685,19 @@ export function CleanseBqView({
               </button>
             ))}
           </div>
-        </nav>
+          </nav>
+        )}
         <div className="apc-cleanse__table">
+          {resultTab === 'schedule' ? (
           <BqTable
             key={activeSection}
             lines={visibleLines}
             activeLine={activeLine}
             setActiveLine={setActiveLine}
             readOnly
-            showMoney
-            showCe
+            showMoney={moneyVisible}
+            showCe={moneyVisible}
+            expandCe={moneyVisible}
             ceDetails={ceDetails}
             onOpenCe={onOpenCe}
             colWidths={
@@ -1659,6 +1711,55 @@ export function CleanseBqView({
                 : { missing: ['cleanse-grout'], override: ['n3', 'n4', 'n5'] }
             }
           />
+          ) : (
+            <table className="apc-bqtable apc-cesummary">
+              <thead>
+                <tr>
+                  <th>CE No.</th>
+                  <th>Description</th>
+                  <th>Date</th>
+                  <th>Reference</th>
+                  <th className="num">Linked {docLabel} items</th>
+                  {moneyVisible && <th className="num">Net Amount (HK$)</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {ceSummary.length === 0 ? (
+                  <tr>
+                    <td className="apc-cesummary__empty" colSpan={moneyVisible ? 6 : 5}>
+                      No compensation event is linked to this {docLabel}.
+                    </td>
+                  </tr>
+                ) : (
+                  ceSummary.map(link => (
+                    <tr
+                      key={link.ceId}
+                      className={onOpenCe ? 'is-openable' : undefined}
+                      onClick={() => onOpenCe?.(link.ceId)}
+                      title={onOpenCe ? 'Open CE AI OCR result' : undefined}
+                    >
+                      <td className="mono">{link.ceCode}</td>
+                      <td>{link.title || 'Compensation event'}</td>
+                      <td>{link.date || '—'}</td>
+                      <td>{link.reference || '—'}</td>
+                      <td className="num">{link.itemIds.length}</td>
+                      {moneyVisible && (
+                        <td className="num">{formatBqNumber(link.amount)}</td>
+                      )}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {moneyVisible && ceSummary.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={5}>Total net amount of all linked CEs</td>
+                    <td className="num">{formatBqNumber(ceNetTotal)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          )}
         </div>
       </div>
 

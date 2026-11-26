@@ -2,23 +2,26 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { ColGroup, ColResize, useColumnWidths } from './ResizeColumns';
 import type { BillLine } from '../lib/demo';
+import { formatBqNumber, formatBqQty } from '../lib/numberFormat';
 
-const f3 = (v: number | null | undefined) =>
-  v == null ? '—' : v.toLocaleString('en-HK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const f2 = (v: number | null | undefined) =>
-  v == null ? '—' : v.toLocaleString('en-HK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fq = (v: number | null | undefined, u: string) => (u === 'nr' ? String(v ?? '—') : f3(v));
+const f2 = formatBqNumber;
+const fq = (v: number | null | undefined, _unit: string) => formatBqQty(v);
 
+/**
+ * Canonical BQ / Activity Schedule column order.
+ * When the same measure comes from two sources the BQ/AS value comes first and
+ * the BIM value follows: Qty -> Qty (BIM), Amount HK$ -> Amount HK$ (BIM).
+ */
 const COLS = [
   { key: 'item', label: 'Item', width: 78 },
   { key: 'desc', label: 'Description', width: 250 },
   { key: 'unit', label: 'Unit', width: 52 },
-  { key: 'qbim', label: 'Qty (BIM)', num: true, width: 92 },
   { key: 'qty', label: 'Qty', num: true, width: 76 },
+  { key: 'qbim', label: 'Qty (BIM)', num: true, width: 92 },
   { key: 'rate', label: 'Rate', num: true, width: 88 },
-  { key: 'ce', label: 'CE', num: true, width: 96 },
-  { key: 'abim', label: 'Amount HK$ (BIM)', num: true, width: 132 },
   { key: 'amount', label: 'Amount HK$', num: true, width: 108 },
+  { key: 'abim', label: 'Amount HK$ (BIM)', num: true, width: 132 },
+  { key: 'ce', label: 'CE', num: true, width: 96 },
   { key: 'final', label: 'Final Amount HK$', num: true, width: 132 }
 ];
 const MONEY_COLS = new Set(['rate', 'abim', 'amount', 'final', 'ce']);
@@ -270,7 +273,6 @@ export function BqTable({
                   </td>
                   <td title={l.label}>{l.label}</td>
                   <td>{l.unit}</td>
-                  <td className="num">{fq(bimQty, l.unit || '')}</td>
                   <td className="num">
                     {!readOnly && onQtyChange ? (
                       <EditableNumber value={qty} unit={l.unit || ''} mode="qty" onCommit={v => onQtyChange(l.id, v)} />
@@ -278,6 +280,7 @@ export function BqTable({
                       fq(qty, l.unit || '')
                     )}
                   </td>
+                  <td className="num">{fq(bimQty, l.unit || '')}</td>
                   {showMoney && (
                     <td className="num">
                       {!readOnly && onRateChange ? (
@@ -287,14 +290,14 @@ export function BqTable({
                       )}
                     </td>
                   )}
+                  {showMoney && <td className="num">{amount == null ? 'Unpriced' : f2(amount)}</td>}
+                  {showMoney && <td className="num">{bimAmount == null ? '—' : f2(bimAmount)}</td>}
                   {showCe && showMoney && (
                     <td className="num" title={details.length ? 'Click the row to view linked CEs' : undefined}>
                       {details.length ? f2(ceTotal) : '—'}
                     </td>
                   )}
-                  {showMoney && <td className="num">{bimAmount == null ? '—' : f2(bimAmount)}</td>}
-                  {showMoney && <td className="num">{amount == null ? 'Unpriced' : f2(amount)}</td>}
-                  {showMoney && (
+                  {showCe && showMoney && (
                     <td className="num">{finalAmount == null ? 'Unpriced' : f2(finalAmount)}</td>
                   )}
                 </tr>

@@ -1,25 +1,21 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from './Icon';
 import type { Subcontractor } from '../lib/subcontractors';
 import {
   SCHEDULE_GROUPS,
+  MONEY_COLUMN_KEYS,
   REQUIRED_LABEL,
   createScheduleRow,
   formatAmount,
-  isRowComplete,
   missingRequired,
   parseAmount,
+  requiredKeysFor,
   savingLoss,
   scheduleTotals,
   type ScheduleColumn,
   type ScheduleColumnKey,
   type SublettingScheduleRow
 } from '../lib/sublettingSchedule';
-
-const FLAT_COLUMNS = SCHEDULE_GROUPS.flatMap(group => group.columns);
-const MULTI_COLUMN_GROUPS = SCHEDULE_GROUPS.filter(
-  group => group.columns.length > 1
-);
 
 const rowId = (index: number) => `sched-row-${index}`;
 
@@ -31,14 +27,36 @@ const cellValue = (row: SublettingScheduleRow, key: ScheduleColumnKey): string =
 export function SublettingSchedule({
   rows,
   subcontractors,
-  onChange
+  onChange,
+  showMoney = true
 }: {
   rows: SublettingScheduleRow[];
   subcontractors: Subcontractor[];
   onChange: (rows: SublettingScheduleRow[]) => void;
+  showMoney?: boolean;
 }) {
   const [savedNote, setSavedNote] = useState('');
-  const totals = scheduleTotals(rows);
+  const requiredKeys = useMemo(() => requiredKeysFor(showMoney), [showMoney]);
+  const requiredLabel = showMoney ? REQUIRED_LABEL : 'Sub-Contract Package';
+
+  const groups = useMemo(
+    () =>
+      showMoney
+        ? SCHEDULE_GROUPS
+        : SCHEDULE_GROUPS.map(group => ({
+            ...group,
+            columns: group.columns.filter(
+              column => !MONEY_COLUMN_KEYS.includes(column.key)
+            )
+          })).filter(group => group.columns.length > 0),
+    [showMoney]
+  );
+  const columns = useMemo(
+    () => groups.flatMap(group => group.columns),
+    [groups]
+  );
+  const multiGroups = groups.filter(group => group.columns.length > 1);
+  const totals = scheduleTotals(rows, requiredKeys);
 
   const updateCell = (id: string, key: ScheduleColumnKey, value: string) => {
     if (key === 'savingLoss') return;
@@ -93,17 +111,22 @@ export function SublettingSchedule({
   };
 
   const completeAll = () => {
-    const pending = rows.filter(row => !isRowComplete(row)).length;
+    const pending = rows.filter(
+      row => missingRequired(row, requiredKeys).length > 0
+    ).length;
     setSavedNote(
       pending
-        ? `${pending} package${pending === 1 ? '' : 's'} still need ${REQUIRED_LABEL}.`
+        ? `${pending} package${pending === 1 ? '' : 's'} still need ${requiredLabel}.`
         : 'All packages have the required data.'
     );
   };
 
   return (
     <section className="apc-sched">
-      <div className="apc-bqstats apc-sched__stats">
+      <div
+        className="apc-bqstats apc-sched__stats"
+        style={showMoney ? undefined : { gridTemplateColumns: '1fr' }}
+      >
         <div>
           <span>Sub-contract packages</span>
           <b>{totals.packages}</b>
@@ -113,23 +136,27 @@ export function SublettingSchedule({
               : 'All required data captured'}
           </small>
         </div>
-        <div>
-          <span>Tender budget</span>
-          <b>{formatAmount(totals.tenderBudget)}</b>
-          <small>HK$ across all packages</small>
-        </div>
-        <div>
-          <span>Awarded tender sum</span>
-          <b>{formatAmount(totals.awardedTenderSum)}</b>
-          <small>HK$ awarded to date</small>
-        </div>
-        <div>
-          <span>Saving / (Loss)</span>
-          <b className={totals.savingLoss < 0 ? 'is-negative' : undefined}>
-            {totals.savingLossKnown ? formatAmount(totals.savingLoss) : '—'}
-          </b>
-          <small>Budget less awarded sum</small>
-        </div>
+        {showMoney && (
+          <>
+            <div>
+              <span>Tender budget</span>
+              <b>{formatAmount(totals.tenderBudget)}</b>
+              <small>HK$ across all packages</small>
+            </div>
+            <div>
+              <span>Awarded tender sum</span>
+              <b>{formatAmount(totals.awardedTenderSum)}</b>
+              <small>HK$ awarded to date</small>
+            </div>
+            <div>
+              <span>Saving / (Loss)</span>
+              <b className={totals.savingLoss < 0 ? 'is-negative' : undefined}>
+                {totals.savingLossKnown ? formatAmount(totals.savingLoss) : '—'}
+              </b>
+              <small>Budget less awarded sum</small>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="apc-recordstoolbar">
@@ -151,16 +178,16 @@ export function SublettingSchedule({
       </div>
 
       <p className="apc-sched__hint">
-        Only <b>{REQUIRED_LABEL}</b> are required. Awarded subcontractor, dates,
-        LOA and work order details can be added later — switch away and come
-        back at any time.
+        Only <b>{requiredLabel}</b> {showMoney ? 'are' : 'is'} required. Awarded
+        subcontractor, dates, LOA and work order details can be added later —
+        switch away and come back at any time.
       </p>
 
       <div className="apc-sched__wrap">
         <table className="apc-schedtable">
           <thead>
             <tr>
-              {SCHEDULE_GROUPS.map(group => {
+              {groups.map(group => {
                 if (group.columns.length === 1) {
                   const column = group.columns[0];
                   return (
@@ -184,7 +211,7 @@ export function SublettingSchedule({
               <th rowSpan={2} className="apc-schedtable__actionhead" aria-label="Row actions" />
             </tr>
             <tr>
-              {MULTI_COLUMN_GROUPS.flatMap(group =>
+              {multiGroups.flatMap(group =>
                 group.columns.map(column => (
                   <th
                     key={column.key}
@@ -199,18 +226,18 @@ export function SublettingSchedule({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td className="apc-records__empty" colSpan={FLAT_COLUMNS.length + 1}>
-                  No sub-contract packages yet. Add the first package — only the
-                  package name and tender budget are needed to start.
+                <td className="apc-records__empty" colSpan={columns.length + 1}>
+                  No sub-contract packages yet. Add the first package — only the{' '}
+                  {requiredLabel} {showMoney ? 'are' : 'is'} needed to start.
                 </td>
               </tr>
             ) : (
               rows.map((row, index) => {
-                const missing = new Set(missingRequired(row));
+                const missing = new Set(missingRequired(row, requiredKeys));
                 const saving = savingLoss(row);
                 return (
                   <tr key={row.id} id={rowId(index)}>
-                    {FLAT_COLUMNS.map(column => {
+                    {columns.map(column => {
                       if (column.kind === 'computed') {
                         return (
                           <td key={column.key} className="apc-schedtable__computed">

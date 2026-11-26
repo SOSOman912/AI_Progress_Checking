@@ -12,6 +12,8 @@ import { SublettingSchedule } from '../components/SublettingSchedule';
 import { ACTIVITY_ITEMS, BQ_SAMPLE_ITEMS } from './Preprocessing';
 import { loadPricingOptions } from '../lib/ceLinks';
 import { projectStorageKey } from '../lib/projectStorage';
+import { usePricingMode } from '../lib/pricingMode';
+import { formatBqQty } from '../lib/numberFormat';
 import {
   loadScheduleRows,
   saveScheduleRows,
@@ -165,6 +167,8 @@ export function SublettingPage({
     () => loadPricingOptions(projectId, 'activity'),
     [projectId]
   );
+  const [pricingMode] = usePricingMode(projectId);
+  const moneyVisible = pricingMode === 'priced';
   const [contracts, setContracts] = useState<SublettingContract[]>(() =>
     loadContracts(projectId)
   );
@@ -611,6 +615,7 @@ export function SublettingPage({
               rows={scheduleRows}
               subcontractors={subcontractors}
               onChange={setScheduleRows}
+              showMoney={moneyVisible}
             />
           ) : draftActivityId && builderActivity ? (
             <section className="apc-subbuilder">
@@ -658,7 +663,7 @@ export function SublettingPage({
 
               <div className="apc-subbuilder__scroll">
                 <table
-                  className="apc-subitems apc-subitems--assign"
+                  className={`apc-subitems apc-subitems--assign${moneyVisible ? '' : ' is-nomoney'}`}
                   title="Shift+click rows to select multiple items, then change one subcontractor dropdown to apply to all selected"
                 >
                   <thead>
@@ -667,7 +672,7 @@ export function SublettingPage({
                       <th>Description</th>
                       <th>Unit</th>
                       <th className="num">Qty</th>
-                      <th className="num">Value</th>
+                      {moneyVisible && <th className="num">Value</th>}
                       <th>Status</th>
                       <th>Subcontractor</th>
                     </tr>
@@ -675,7 +680,7 @@ export function SublettingPage({
                   <tbody>
                     {builderActivityGroups.map(group => [
                       <tr key={`group-${group.no}`} className="apc-subitems__schedule">
-                        <td colSpan={7}>
+                        <td colSpan={moneyVisible ? 7 : 6}>
                           Schedule No. {group.no} — {group.title}
                         </td>
                       </tr>,
@@ -722,8 +727,10 @@ export function SublettingPage({
                             <td className="mono">{item.no}</td>
                             <td>{item.label}</td>
                             <td>{item.unit || '—'}</td>
-                            <td className="num">{item.qty.toFixed(2)}</td>
-                            <td className="num">{money(itemValue(item))}</td>
+                            <td className="num">{formatBqQty(item.qty)}</td>
+                            {moneyVisible && (
+                              <td className="num">{money(itemValue(item))}</td>
+                            )}
                             <td>
                               {assigned && !changed ? (
                                 <span className="apc-subitems__assigned">
@@ -768,7 +775,7 @@ export function SublettingPage({
                           </tr>,
                           expanded && (
                             <tr key={`${item.id}-bq`} className="apc-subitems__bqexpand">
-                              <td colSpan={7}>
+                              <td colSpan={moneyVisible ? 7 : 6}>
                                 <div className="apc-subitems__bqpanel">
                                   <div className="apc-subitems__bqhead">
                                     <b>Mapped BQ items</b>
@@ -796,10 +803,7 @@ export function SublettingPage({
                                           <tr key={bqItem.no}>
                                             <td>{bqItem.label}</td>
                                             <td className="num">
-                                              {bqItem.qty.toLocaleString('en-HK', {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2
-                                              })}
+                                              {formatBqQty(bqItem.qty)}
                                             </td>
                                             <td>{bqItem.unit}</td>
                                           </tr>
@@ -831,7 +835,7 @@ export function SublettingPage({
                     <th>Subcontractor</th>
                     <th>Activity items</th>
                     <th>Items</th>
-                    <th>Value</th>
+                    {moneyVisible && <th>Value</th>}
                     <th>Created</th>
                     <th />
                   </tr>
@@ -839,7 +843,7 @@ export function SublettingPage({
                 <tbody>
                   {contracts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="apc-records__empty">
+                      <td colSpan={moneyVisible ? 7 : 6} className="apc-records__empty">
                         No subletting contracts yet.
                       </td>
                     </tr>
@@ -870,7 +874,9 @@ export function SublettingPage({
                             </div>
                           </td>
                           <td className="num">{items.length}</td>
-                          <td className="num">{money(value)}</td>
+                          {moneyVisible && (
+                            <td className="num">{money(value)}</td>
+                          )}
                           <td>{dateLabel(contract.createdAt)}</td>
                           <td>
                             <button

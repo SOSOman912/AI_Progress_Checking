@@ -219,15 +219,34 @@ export const savingLoss = (row: SublettingScheduleRow): number | null => {
   return budget - awarded;
 };
 
-export const missingRequired = (row: SublettingScheduleRow): ScheduleColumnKey[] =>
-  REQUIRED_KEYS.filter(key => {
+export const MONEY_COLUMN_KEYS: ScheduleColumnKey[] = [
+  'tenderBudget',
+  'budgetRelease',
+  'awardedTenderSum',
+  'savingLoss'
+];
+
+export const requiredKeysFor = (
+  showMoney: boolean
+): ScheduleColumnKey[] =>
+  showMoney
+    ? REQUIRED_KEYS
+    : REQUIRED_KEYS.filter(key => !MONEY_COLUMN_KEYS.includes(key));
+
+export const missingRequired = (
+  row: SublettingScheduleRow,
+  keys: ScheduleColumnKey[] = REQUIRED_KEYS
+): ScheduleColumnKey[] =>
+  keys.filter(key => {
     if (key === 'savingLoss') return false;
     const value = row[key as Exclude<ScheduleColumnKey, 'savingLoss'>];
     return !String(value ?? '').trim();
   });
 
-export const isRowComplete = (row: SublettingScheduleRow): boolean =>
-  missingRequired(row).length === 0;
+export const isRowComplete = (
+  row: SublettingScheduleRow,
+  keys: ScheduleColumnKey[] = REQUIRED_KEYS
+): boolean => missingRequired(row, keys).length === 0;
 
 const nextItemNo = (rows: SublettingScheduleRow[]): string => {
   const max = rows.reduce((current, row) => {
@@ -346,7 +365,10 @@ export interface ScheduleTotals {
   savingLossKnown: boolean;
 }
 
-export const scheduleTotals = (rows: SublettingScheduleRow[]): ScheduleTotals => {
+export const scheduleTotals = (
+  rows: SublettingScheduleRow[],
+  keys: ScheduleColumnKey[] = REQUIRED_KEYS
+): ScheduleTotals => {
   let tenderBudget = 0;
   let awardedTenderSum = 0;
   let savingLossTotal = 0;
@@ -362,7 +384,7 @@ export const scheduleTotals = (rows: SublettingScheduleRow[]): ScheduleTotals =>
       savingLossTotal += saving;
     }
   });
-  const complete = rows.filter(isRowComplete).length;
+  const complete = rows.filter(row => isRowComplete(row, keys)).length;
   return {
     packages: rows.length,
     complete,

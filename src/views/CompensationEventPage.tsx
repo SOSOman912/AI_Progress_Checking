@@ -11,6 +11,8 @@ import { Icon } from '../components/Icon';
 import { ACTIVITY_ITEMS, ProcessingPanel } from './Preprocessing';
 import type { NecOption } from '../lib/projects';
 import { projectStorageKey } from '../lib/projectStorage';
+import { usePricingMode } from '../lib/pricingMode';
+import { formatBqQty, parseNumberInput } from '../lib/numberFormat';
 import {
   BQ_ITEMS,
   ceLinkTarget,
@@ -36,7 +38,26 @@ interface CeFields {
   date: string;
   reference: string;
   amount: string;
+  quantity: string;
   title: string;
+}
+
+/** A region of the original document the AI OCR result was extracted from. */
+interface CeRegion {
+  id: string;
+  label: string;
+  value: string;
+  /** Percentages of the page box. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  confidence: number;
+}
+
+interface CeDocumentImage {
+  dataUrl?: string;
+  mime?: string;
 }
 
 interface CeRecord {
@@ -48,6 +69,9 @@ interface CeRecord {
   fields: CeFields;
   text: string;
   items: CeOcrItem[];
+  quantity?: number;
+  document?: CeDocumentImage;
+  regions?: CeRegion[];
 }
 
 interface CeDraft {
@@ -55,6 +79,8 @@ interface CeDraft {
   size: number;
   progress: number;
   status: 'uploading' | 'ready';
+  dataUrl?: string;
+  mime?: string;
 }
 
 type CePhase = 'upload' | 'bq' | 'processing' | 'complete';
@@ -129,9 +155,29 @@ const loadRecords = (projectId?: string): CeRecord[] => {
   }
 };
 
+const seedQuantity = seedItem.reduce((sum, item) => sum + item.qty, 0);
+
+const buildRegions = (
+  code: string,
+  date: string,
+  reference: string,
+  quantity: number,
+  amount: string
+): CeRegion[] => [
+  { id: 'title', label: 'Subject', value: 'Additional drainage works', x: 8, y: 8, w: 64, h: 5, confidence: 98.6 },
+  { id: 'ce-number', label: 'CE number', value: code, x: 8, y: 15, w: 36, h: 4.5, confidence: 99.2 },
+  { id: 'date', label: 'Date', value: date, x: 8, y: 20.5, w: 32, h: 4.5, confidence: 97.4 },
+  { id: 'reference', label: 'Reference', value: reference, x: 8, y: 26, w: 36, h: 4.5, confidence: 98.1 },
+  { id: 'quantity', label: 'Quantity change', value: String(quantity), x: 8, y: 31.5, w: 44, h: 4.5, confidence: 96.3 },
+  { id: 'amount', label: 'Assessed value', value: amount, x: 8, y: 60, w: 56, h: 5, confidence: 97.8 }
+];
+
 const makeOcrRecord = (draft: CeDraft, index: number): CeRecord => {
   const now = Date.now();
   const code = `CE-2026-${String(15 + index).padStart(3, '0')}`;
+  const date = dateLabel(now);
+  const reference = `CE/2026/${String(15 + index).padStart(3, '0')}`;
+  const amount = 'HK$ 128,500.00';
   return {
     id: `ce-${now}-${Math.random().toString(36).slice(2, 7)}`,
     code,
@@ -140,13 +186,19 @@ const makeOcrRecord = (draft: CeDraft, index: number): CeRecord => {
     confidence: 97.8,
     fields: {
       ceNumber: code,
-      date: dateLabel(now),
-      reference: `CE/2026/${String(15 + index).padStart(3, '0')}`,
-      amount: 'HK$ 128,500.00',
+      date,
+      reference,
+      amount,
+      quantity: String(seedQuantity),
       title: 'Additional drainage works'
     },
+    quantity: seedQuantity,
     text: seedText,
-    items: seedItem
+    items: seedItem,
+    document: draft.dataUrl
+      ? { dataUrl: draft.dataUrl, mime: draft.mime }
+      : undefined,
+    regions: buildRegions(code, date, reference, seedQuantity, amount)
   };
 };
 
@@ -199,6 +251,8 @@ export function CompensationEventPage({
   necOption?: NecOption;
   projectId?: string;
 }) {
+  const [pricingMode] = usePricingMode(projectId);
+  const moneyVisible = pricingMode === 'priced';
   const initialRecords = useMemo(() => loadRecords(projectId), [projectId]);
   const [records, setRecords] = useState<CeRecord[]>(initialRecords);
   const openedInitial = useRef<string | null>(null);
@@ -287,6 +341,7 @@ export function CompensationEventPage({
                 ceName: record.name,
                 title: record.fields.title,
                 amount: 128500,
+                quantity: record.quantity,
                 date: record.fields.date,
                 reference: record.fields.reference,
                 targetType,
@@ -370,6 +425,33 @@ export function CompensationEventPage({
     if (!file) return;
     setDraft({ name: file.name, size: file.size, progress: 0, status: 'uploading' });
     setError(null);
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl =
+        typeof reader.result === 'string' ? reader.result : undefined;
+      if (!dataUrl) return;
+      const apply = (value: string, mime: string) =>
+        setDraft(prev => (prev ? { ...prev, dataUrl: value, mime } : prev));
+      const image = new Image();
+      image.onload = () => {
+        const max = 1200;
+        const scale = Math.min(1, max / image.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          apply(dataUrl, file.type);
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        apply(canvas.toDataURL('image/jpeg', 0.82), 'image/jpeg');
+      };
+      image.onerror = () => apply(dataUrl, file.type);
+      image.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
   };
 
   const onFile = (event: ChangeEvent<HTMLInputElement>) => {
@@ -485,6 +567,7 @@ export function CompensationEventPage({
         ceName: activeRecord.name,
         title: activeRecord.fields.title,
         amount: 128500,
+        quantity: activeRecord.quantity,
         date: activeRecord.fields.date,
         reference: activeRecord.fields.reference,
         targetType,
@@ -550,27 +633,70 @@ export function CompensationEventPage({
               </div>
 
               <div className="apc-ce-result__grid">
-                <section className="apc-ce-paper">
-                  <div className="apc-ce-paper__top">
-                    <span>Compensation event</span>
-                    <span>{activeRecord.code}</span>
+                <section className="apc-ce-paper apc-cedoc">
+                  <div className="apc-cedoc__head">
+                    <div>
+                      <b>{activeRecord.name}</b>
+                      <span>
+                        Original document
+                        {activeRecord.document?.dataUrl ? '' : ' (no preview stored)'} · page 1 of 1
+                      </span>
+                    </div>
+                    <span className="apc-cedoc__count">
+                      {(activeRecord.regions ?? []).length} extracted regions
+                    </span>
                   </div>
-                  <h3>{activeRecord.fields.title}</h3>
-                  <dl>
-                    <div><dt>CE No.</dt><dd>{activeRecord.fields.ceNumber}</dd></div>
-                    <div><dt>Date</dt><dd>{activeRecord.fields.date}</dd></div>
-                    <div><dt>Reference</dt><dd>{activeRecord.fields.reference}</dd></div>
-                    <div><dt>Assessed value</dt><dd>{activeRecord.fields.amount}</dd></div>
-                  </dl>
-                  <p>
-                    The Contractor is instructed to carry out additional drainage works at the south service
-                    yard, including trench excavation, pipework and inspection chambers.
-                  </p>
-                  <p>
-                    The assessed value of this compensation event is {activeRecord.fields.amount} and is to be
-                    incorporated into the Cleanse{' '}
-                    {activeTarget?.type === 'activity' ? 'Activity Schedule' : 'BQ'} CE column.
-                  </p>
+
+                  <div className="apc-cedoc__page">
+                    {activeRecord.document?.dataUrl ? (
+                      <img
+                        className="apc-cedoc__image"
+                        src={activeRecord.document.dataUrl}
+                        alt={activeRecord.name}
+                      />
+                    ) : (
+                      <div className="apc-cedoc__mock">
+                        <div className="apc-ce-paper__top">
+                          <span>Compensation event</span>
+                          <span>{activeRecord.code}</span>
+                        </div>
+                        <h3>{activeRecord.fields.title}</h3>
+                        <dl>
+                          <div><dt>CE No.</dt><dd>{activeRecord.fields.ceNumber}</dd></div>
+                          <div><dt>Date</dt><dd>{activeRecord.fields.date}</dd></div>
+                          <div><dt>Reference</dt><dd>{activeRecord.fields.reference}</dd></div>
+                          <div><dt>Quantity change</dt><dd>{activeRecord.fields.quantity}</dd></div>
+                          <div><dt>Assessed value</dt><dd>{activeRecord.fields.amount}</dd></div>
+                        </dl>
+                        <p>
+                          The Contractor is instructed to carry out additional drainage works at the south service
+                          yard, including trench excavation, pipework and inspection chambers.
+                        </p>
+                        <p>
+                          The assessed value of this compensation event is {activeRecord.fields.amount} and is to be
+                          incorporated into the Cleanse{' '}
+                          {activeTarget?.type === 'activity' ? 'Activity Schedule' : 'BQ'} CE column.
+                        </p>
+                      </div>
+                    )}
+                    {(activeRecord.regions ?? []).map(region => (
+                      <span
+                        key={region.id}
+                        className="apc-cedoc__region"
+                        style={{
+                          left: `${region.x}%`,
+                          top: `${region.y}%`,
+                          width: `${region.w}%`,
+                          height: `${region.h}%`
+                        }}
+                        title={`${region.label}: ${region.value} · ${region.confidence}% confidence`}
+                      >
+                        <i>{region.label}</i>
+                        <b>{region.value}</b>
+                      </span>
+                    ))}
+                  </div>
+
                   <div className="apc-ce-linked">
                     <div className="apc-ce-linked__head">
                       <b>
@@ -593,7 +719,9 @@ export function CompensationEventPage({
                               <th>Item</th>
                               <th>Description</th>
                               <th>Unit</th>
-                              <th className="num">Allocated (HK$)</th>
+                              {moneyVisible && (
+                                <th className="num">Allocated (HK$)</th>
+                              )}
                             </tr>
                           </thead>
                           <tbody>
@@ -602,12 +730,14 @@ export function CompensationEventPage({
                                 <td className="mono">{item.no}</td>
                                 <td>{item.label}</td>
                                 <td>{item.unit || '—'}</td>
-                                <td className="num">
-                                  {activeAllocation.toLocaleString('en-HK', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2
-                                  })}
-                                </td>
+                                {moneyVisible && (
+                                  <td className="num">
+                                    {activeAllocation.toLocaleString('en-HK', {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2
+                                    })}
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -630,7 +760,10 @@ export function CompensationEventPage({
                     <div><span>CE Number</span><b>{activeRecord.fields.ceNumber}</b></div>
                     <div><span>Date</span><b>{activeRecord.fields.date}</b></div>
                     <div><span>Reference</span><b>{activeRecord.fields.reference}</b></div>
-                    <div><span>Assessed value</span><b>{activeRecord.fields.amount}</b></div>
+                    <div><span>Quantity change</span><b>{activeRecord.fields.quantity}</b></div>
+                    {moneyVisible && (
+                      <div><span>Assessed value</span><b>{activeRecord.fields.amount}</b></div>
+                    )}
                   </div>
                   <div className="apc-ce-ocr__label">Extracted text</div>
                   <pre className="apc-ce-text">{activeRecord.text}</pre>
@@ -641,8 +774,8 @@ export function CompensationEventPage({
                         <th>Description</th>
                         <th>Unit</th>
                         <th>Qty</th>
-                        <th>Rate</th>
-                        <th>Amount</th>
+                        {moneyVisible && <th>Rate</th>}
+                        {moneyVisible && <th>Amount</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -650,9 +783,13 @@ export function CompensationEventPage({
                         <tr key={item.description}>
                           <td>{item.description}</td>
                           <td>{item.unit}</td>
-                          <td className="num">{item.qty.toFixed(2)}</td>
-                          <td className="num">{item.rate.toFixed(2)}</td>
-                          <td className="num">{item.amount.toFixed(2)}</td>
+                          <td className="num">{formatBqQty(item.qty)}</td>
+                          {moneyVisible && (
+                            <td className="num">{item.rate.toFixed(2)}</td>
+                          )}
+                          {moneyVisible && (
+                            <td className="num">{item.amount.toFixed(2)}</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -684,13 +821,17 @@ export function CompensationEventPage({
                   <tr>
                     <th>CE document</th>
                     <th>CE number</th>
+                    <th className="num">Qty</th>
+                    {moneyVisible && <th className="num">Amount</th>}
                     <th>Received</th>
                     <th>Status</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRecords.map(record => (
+                  {filteredRecords.map(record => {
+                    const amountValue = parseNumberInput(record.fields.amount);
+                    return (
                     <tr key={record.id} onClick={() => openResult(record)}>
                       <td>
                         <div className="apc-records__name">
@@ -701,6 +842,19 @@ export function CompensationEventPage({
                         </div>
                       </td>
                       <td className="apc-records__id">{record.code}</td>
+                      <td className="num">
+                        {record.quantity == null ? '—' : formatBqQty(record.quantity)}
+                      </td>
+                      {moneyVisible && (
+                        <td className="num">
+                          {amountValue == null
+                            ? '—'
+                            : amountValue.toLocaleString('en-HK', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                              })}
+                        </td>
+                      )}
                       <td>{dateLabel(record.receivedAt)}</td>
                       <td>
                         <span className="apc-recordstatus confirm">OCR ready</span>
@@ -724,10 +878,16 @@ export function CompensationEventPage({
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {!filteredRecords.length && (
                     <tr>
-                      <td colSpan={5} className="apc-records__empty">No CE documents found.</td>
+                      <td
+                        colSpan={moneyVisible ? 7 : 6}
+                        className="apc-records__empty"
+                      >
+                        No CE documents found.
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -756,7 +916,11 @@ export function CompensationEventPage({
                   onDragOver={event => event.preventDefault()}
                   onDrop={onDrop}
                 >
-                  <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={onFile} />
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                    onChange={onFile}
+                  />
                   {draft ? (
                     <div className="apc-importcard__loaded">
                       <span className="apc-importcard__kind">CE</span>
@@ -801,7 +965,7 @@ export function CompensationEventPage({
                       <span className="apc-importcard__copy">
                         Drag and drop your file here, or <strong>click to select</strong>.
                       </span>
-                      <small>Supported formats: PDF, Word or Excel</small>
+                      <small>Supported formats: PDF, Word or Excel · images (PNG/JPG) are kept for the OCR comparison view</small>
                     </>
                   )}
                 </label>
@@ -913,7 +1077,7 @@ export function CompensationEventPage({
                       <th>Description</th>
                       <th>Unit</th>
                       <th className="num">Qty</th>
-                      <th className="num">Rate</th>
+                      {moneyVisible && <th className="num">Rate</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -936,15 +1100,17 @@ export function CompensationEventPage({
                           <td className="mono">{item.no}</td>
                           <td>{item.label}</td>
                           <td>{item.unit || '—'}</td>
-                          <td className="num">{item.qty.toFixed(2)}</td>
-                          <td className="num">
-                            {item.rate == null
-                              ? '—'
-                              : item.rate.toLocaleString('en-HK', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2
-                                })}
-                          </td>
+                          <td className="num">{formatBqQty(item.qty)}</td>
+                          {moneyVisible && (
+                            <td className="num">
+                              {item.rate == null
+                                ? '—'
+                                : item.rate.toLocaleString('en-HK', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                  })}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

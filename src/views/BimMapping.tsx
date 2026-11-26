@@ -2209,6 +2209,7 @@ export function BimMapping({
       <CostResultPage
         key={costRun.id}
         scenario={costRun}
+        projectId={projectId}
         onBack={() => {
           setPage('library');
           setCostRun(null);

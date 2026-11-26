@@ -8,6 +8,8 @@ import {
   type CostCeDetail,
   type CostResultMode
 } from '../lib/costResult';
+import { usePricingMode } from '../lib/pricingMode';
+import { formatBqQty } from '../lib/numberFormat';
 
 const MODE_LABEL: Record<CostResultMode, string> = {
   bq: 'Bill of Quantities',
@@ -41,11 +43,15 @@ function CeDetails({ details }: { details: CostCeDetail[] }) {
 
 export function CostReviewBody({
   scenario,
-  mode
+  mode,
+  projectId
 }: {
   scenario: MappingScenario;
   mode: CostResultMode;
+  projectId?: string;
 }) {
+  const [pricingMode] = usePricingMode(projectId);
+  const moneyVisible = pricingMode === 'priced';
   const [selectedCe, setSelectedCe] = useState<string[]>(() =>
     scenario.sources?.ce ? COST_CE_RECORDS.map(record => record.id) : []
   );
@@ -114,15 +120,16 @@ export function CostReviewBody({
           </div>
           <div className="apc-coststat">
             <span>Contract value</span>
-            <b>{money(result.total)}</b>
-            <em>{valueSource}</em>
+            <b>{moneyVisible ? money(result.total) : '—'}</b>
+            <em>{moneyVisible ? valueSource : 'Quantity only — no pricing imported'}</em>
           </div>
           <div className="apc-coststat">
             <span>Certified / paid</span>
-            <b>{money(result.certified)}</b>
+            <b>{moneyVisible ? money(result.certified) : '—'}</b>
             <em>
-              {certifiedPct}% of value
-              {result.ceTotal ? ` · CE ${money(result.ceTotal)}` : ' · No CE'}
+              {moneyVisible
+                ? `${certifiedPct}% of value${result.ceTotal ? ` · CE ${money(result.ceTotal)}` : ' · No CE'}`
+                : 'Quantity only — no pricing imported'}
             </em>
           </div>
         </div>
@@ -149,9 +156,9 @@ export function CostReviewBody({
                       <th>Description</th>
                       <th>Unit</th>
                       <th>Qty</th>
-                      <th>Rate</th>
-                      <th>Amount</th>
-                      <th>CE</th>
+                      {moneyVisible && <th>Rate</th>}
+                      {moneyVisible && <th>Amount</th>}
+                      {moneyVisible && <th>CE</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -163,9 +170,14 @@ export function CostReviewBody({
                             <td className="apc-cost-table__code">{line.code}</td>
                             <td>{line.description}</td>
                             <td>{line.unit}</td>
-                            <td className="num">{line.qty.toFixed(1)}</td>
-                            <td className="num">{money(line.rate)}</td>
-                            <td className="num">{money(line.amount)}</td>
+                            <td className="num">{formatBqQty(line.qty)}</td>
+                            {moneyVisible && (
+                              <td className="num">{money(line.rate)}</td>
+                            )}
+                            {moneyVisible && (
+                              <td className="num">{money(line.amount)}</td>
+                            )}
+                            {moneyVisible && (
                             <td className="apc-cost-table__ce">
                               {line.ceTotal ? (
                                 <button
@@ -183,10 +195,11 @@ export function CostReviewBody({
                                 '—'
                               )}
                             </td>
+                            )}
                           </tr>
-                          {expanded && line.ceDetails.length > 0 && (
+                          {expanded && moneyVisible && line.ceDetails.length > 0 && (
                             <tr className="apc-ce-detail">
-                              <td colSpan={7}>
+                              <td colSpan={moneyVisible ? 7 : 4}>
                                 <CeDetails details={line.ceDetails} />
                               </td>
                             </tr>
@@ -196,12 +209,13 @@ export function CostReviewBody({
                     })}
                     {!result.bq.length && (
                       <tr>
-                        <td colSpan={7} className="apc-scan-elements__empty">
+                        <td colSpan={moneyVisible ? 7 : 4} className="apc-scan-elements__empty">
                           No BQ lines linked to this scenario.
                         </td>
                       </tr>
                     )}
                   </tbody>
+                  {moneyVisible && (
                   <tfoot>
                     <tr>
                       <td colSpan={5}>Total</td>
@@ -209,6 +223,7 @@ export function CostReviewBody({
                       <td className="num">{money(result.ceTotal)}</td>
                     </tr>
                   </tfoot>
+                  )}
                 </table>
               )}
 
@@ -220,8 +235,8 @@ export function CostReviewBody({
                       <th>Start</th>
                       <th>Finish</th>
                       <th>Complete</th>
-                      <th>Value</th>
-                      <th>CE</th>
+                      {moneyVisible && <th>Value</th>}
+                      {moneyVisible && <th>CE</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -243,7 +258,10 @@ export function CostReviewBody({
                                 <b>{line.pct}%</b>
                               </div>
                             </td>
-                            <td className="num">{money(line.value)}</td>
+                            {moneyVisible && (
+                              <td className="num">{money(line.value)}</td>
+                            )}
+                            {moneyVisible && (
                             <td className="apc-cost-table__ce">
                               {line.ceTotal ? (
                                 <button
@@ -261,10 +279,11 @@ export function CostReviewBody({
                                 '—'
                               )}
                             </td>
+                            )}
                           </tr>
-                          {expanded && line.ceDetails.length > 0 && (
+                          {expanded && moneyVisible && line.ceDetails.length > 0 && (
                             <tr className="apc-ce-detail">
-                              <td colSpan={6}>
+                              <td colSpan={moneyVisible ? 6 : 4}>
                                 <CeDetails details={line.ceDetails} />
                               </td>
                             </tr>
@@ -274,12 +293,13 @@ export function CostReviewBody({
                     })}
                     {!result.activity.length && (
                       <tr>
-                        <td colSpan={6} className="apc-scan-elements__empty">
+                        <td colSpan={moneyVisible ? 6 : 4} className="apc-scan-elements__empty">
                           No activity schedule linked to this scenario.
                         </td>
                       </tr>
                     )}
                   </tbody>
+                  {moneyVisible && (
                   <tfoot>
                     <tr>
                       <td colSpan={4}>Total</td>
@@ -287,6 +307,7 @@ export function CostReviewBody({
                       <td className="num">{money(result.ceTotal)}</td>
                     </tr>
                   </tfoot>
+                  )}
                 </table>
               )}
 
@@ -297,7 +318,7 @@ export function CostReviewBody({
                       <th>Invoice</th>
                       <th>Period</th>
                       <th>Date</th>
-                      <th>Amount</th>
+                      {moneyVisible && <th>Amount</th>}
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -307,7 +328,9 @@ export function CostReviewBody({
                         <td className="apc-cost-table__code">{line.ref}</td>
                         <td>{line.period}</td>
                         <td>{line.date}</td>
-                        <td className="num">{money(line.amount)}</td>
+                        {moneyVisible && (
+                          <td className="num">{money(line.amount)}</td>
+                        )}
                         <td>
                           <span
                             className={`apc-costresult__status is-${line.status.toLowerCase()}`}
@@ -319,12 +342,13 @@ export function CostReviewBody({
                     ))}
                     {!result.records.length && (
                       <tr>
-                        <td colSpan={5} className="apc-scan-elements__empty">
+                        <td colSpan={moneyVisible ? 5 : 4} className="apc-scan-elements__empty">
                           No invoices linked to this scenario.
                         </td>
                       </tr>
                     )}
                   </tbody>
+                  {moneyVisible && (
                   <tfoot>
                     <tr>
                       <td colSpan={3}>Total</td>
@@ -332,6 +356,7 @@ export function CostReviewBody({
                       <td />
                     </tr>
                   </tfoot>
+                  )}
                 </table>
               )}
             </div>
@@ -406,10 +431,12 @@ export function CostReviewBody({
 
 export function CostResultPage({
   scenario,
-  onBack
+  onBack,
+  projectId
 }: {
   scenario: MappingScenario;
   onBack: () => void;
+  projectId?: string;
 }) {
   const result = useMemo(() => buildCostResult(scenario), [scenario]);
   const [tab, setTab] = useState<CostResultMode>(result.modes[0]);
@@ -452,7 +479,7 @@ export function CostResultPage({
         </div>
       )}
 
-      <CostReviewBody scenario={scenario} mode={tab} />
+      <CostReviewBody scenario={scenario} mode={tab} projectId={projectId} />
     </main>
   );
 }
