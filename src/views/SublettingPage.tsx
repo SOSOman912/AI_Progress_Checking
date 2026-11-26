@@ -8,9 +8,15 @@ import {
 import * as XLSX from 'xlsx';
 import { FlowTabs, type DocFlow } from '../components/FlowTabs';
 import { Icon } from '../components/Icon';
+import { SublettingSchedule } from '../components/SublettingSchedule';
 import { ACTIVITY_ITEMS, BQ_SAMPLE_ITEMS } from './Preprocessing';
 import { loadPricingOptions } from '../lib/ceLinks';
 import { projectStorageKey } from '../lib/projectStorage';
+import {
+  loadScheduleRows,
+  saveScheduleRows,
+  type SublettingScheduleRow
+} from '../lib/sublettingSchedule';
 import {
   loadSubcontractors,
   nextSubcontractorId,
@@ -179,11 +185,20 @@ export function SublettingPage({
   const [expandedActivityId, setExpandedActivityId] = useState('');
   const [bqSchedules, setBqSchedules] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const [view, setView] = useState<'schedule' | 'contracts'>('schedule');
+  const [scheduleRows, setScheduleRows] = useState<SublettingScheduleRow[]>(() =>
+    loadScheduleRows(projectId)
+  );
 
   useEffect(() => {
     setContracts(loadContracts(projectId));
     setSubcontractors(loadSubcontractors(projectId));
+    setScheduleRows(loadScheduleRows(projectId));
   }, [projectId]);
+
+  useEffect(() => {
+    saveScheduleRows(scheduleRows, projectId);
+  }, [scheduleRows, projectId]);
 
   useEffect(() => {
     saveSubcontractors(subcontractors, projectId);
@@ -552,19 +567,52 @@ export function SublettingPage({
       <header className="apc-docpage__head">
         <div className="apc-docpage__title">
           <h1>Document Management</h1>
-          <span>Subletting contracts</span>
+          <span>
+            {view === 'schedule'
+              ? 'Subletting Schedule · BK-CP03.02-FR01'
+              : 'Subletting contracts'}
+          </span>
         </div>
-        <button className="apc-docpage__new" onClick={openCreate}>
-          <span aria-hidden>+</span>
-          Create Subletting Contract
-        </button>
+        {view === 'contracts' && (
+          <button className="apc-docpage__new" onClick={openCreate}>
+            <span aria-hidden>+</span>
+            Create Subletting Contract
+          </button>
+        )}
       </header>
 
       <FlowTabs activeFlow="subletting" onSelect={onFlow} necOption={necOption} />
 
+      <div className="apc-docpage__tabsbar apc-docpage__tabsbar--sub">
+        <div className="apc-seg apc-seg--sm">
+          <button
+            className={view === 'schedule' ? 'on' : ''}
+            onClick={() => setView('schedule')}
+          >
+            Subletting schedule
+          </button>
+          <button
+            className={view === 'contracts' ? 'on' : ''}
+            onClick={() => setView('contracts')}
+          >
+            Contracts
+          </button>
+        </div>
+        <span className="apc-docpage__subhint">
+          Plan the sub-contract packages first — awarded details can be completed
+          later.
+        </span>
+      </div>
+
       <div className="apc-docpage__body">
         <div className="apc-docpage__content apc-docpage__content--records">
-          {draftActivityId && builderActivity ? (
+          {view === 'schedule' ? (
+            <SublettingSchedule
+              rows={scheduleRows}
+              subcontractors={subcontractors}
+              onChange={setScheduleRows}
+            />
+          ) : draftActivityId && builderActivity ? (
             <section className="apc-subbuilder">
               <div className="apc-subbuilder__head">
                 <div>

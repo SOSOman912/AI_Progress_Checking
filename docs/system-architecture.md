@@ -96,7 +96,7 @@ All Document Management pages use the module title `Document Management`; the pa
 | Activity records | Activity Schedule records | `Import` |
 | BQ records | Bill of Quantity records / BQ reference records | `Import` |
 | CE records | Compensation Event records | `Import CE` |
-| Subletting | Subletting contracts | `Create Subletting Contract` |
+| Subletting | Subletting Schedule · BK-CP03.02-FR01 (default) / Subletting contracts | `Create Subletting Contract` (Contracts view only) |
 | Invoice / DN | Invoice / DN | Placeholder |
 
 ---
@@ -321,9 +321,20 @@ A/C only, under `Sub-Contractor`:
 - Repeating creation splits the Activity Schedule into multiple contracts
 - An item can belong to only one subcontract package at a time
 
+#### Subletting Schedule (BK-CP03.02-FR01)
+
+- Default sub-page of `Subletting`; the `Subletting schedule` / `Contracts` seg control keeps the activity-based builder above available
+- Mirrors the template columns A–AG: Item, Sub-Contract Packages, Awarded Sub-Contractor, Tender Budget, Budget Release, Awarded Tender Sum, Saving / (Loss), Target on Board, Subletting by, QS In Charge, Master Programme Rev. (Award / Works Start), Tenderer List Approval → LOA if necessary (Tentative / Actual), Sub-Contract / Work Order No., LOA (Tentative / Issue / Signed (BK)), Sub-Contract / Work Order (Issue / Signed (by BK)), Remarks
+- Only `Sub-Contract Packages` and `Tender Budget` are required. Every other column is optional and can be left empty, so a schedule can be started early and completed later
+- Cells missing required data are highlighted, and the header/footer report how many packages still need required data
+- `Saving / (Loss)` is read-only: Tender Budget − Awarded Tender Sum, shown once both values exist; negative values are shown in red
+- Awarded Sub-Contractor accepts free text and offers the project subcontractor list as suggestions, because packages are often not awarded yet
+- Edits persist automatically on change
+
 Storage:
 
 `apc.subletting-contracts.v1:<projectId>`
+`apc.subletting-schedule.v1:<projectId>`
 
 ---
 
@@ -340,6 +351,7 @@ All working data is namespaced by project ID. The project list and active select
 | CE links | `apc.ce-links.v2:<projectId>` | Project |
 | BQ bill ↔ Schedule mapping | `apc.bq-activity-bill-map.v2:<projectId>` | Project |
 | Subletting contracts | `apc.subletting-contracts.v1:<projectId>` | Project |
+| Subletting schedule (BK-CP03.02-FR01) | `apc.subletting-schedule.v1:<projectId>` | Project |
 | Subcontractor list | `apc.subcontractors.v1:<projectId>` | Project |
 | Mapping scenarios | `apc.mapping-scenarios.v2:<projectId>` | Project |
 | Scan assets | `apc.scan-assets.v2:<projectId>` | Project |
@@ -416,7 +428,9 @@ Rules:
 | `src/App.tsx` | Hash routing, projects, active project, module mount keys |
 | `src/views/DocumentManagement.tsx` | Document/BQ/AS records, import pipeline, BQ-AS link step, Cleanse routing |
 | `src/views/CompensationEventPage.tsx` | CE records, OCR result, relink and linked items |
-| `src/views/SublettingPage.tsx` | Subcontractor list, Activity Schedule assignment and contract creation |
+| `src/views/SublettingPage.tsx` | Subletting schedule and contract views, subcontractor list, Activity Schedule assignment |
+| `src/components/SublettingSchedule.tsx` | BK-CP03.02-FR01 schedule table with grouped headers, inline edit, required-field highlighting |
+| `src/lib/sublettingSchedule.ts` | Subletting schedule row model, column definitions, saving/loss + totals, project storage |
 | `src/lib/subcontractors.ts` | Project-scoped subcontractor list model and storage |
 | `src/views/Preprocessing.tsx` | Structured BQ table, BQ-Activity mapping, Cleanse, CE Detail |
 | `src/components/FlowTabs.tsx` | Client and Sub-Contractor tab containers |

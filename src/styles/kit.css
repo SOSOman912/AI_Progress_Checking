@@ -3229,3 +3229,50 @@ table.apc-grid th {
 
 .apc-subitems__edited { display: inline-flex; align-items: center; height: 17px; padding: 0 6px; border-radius: 3px; background: #fff4e5; color: #9a640c; font-size: 8.5px; font-weight: 600; }
 
+
+
+/* Subletting Schedule (BK-CP03.02-FR01) */
+.apc-docpage__tabsbar--sub { min-height: 46px; padding-top: 0; padding-bottom: 0; }
+.apc-docpage__subhint { color: var(--fg3); font-size: 10px; }
+.apc-sched { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.apc-sched__stats { flex-shrink: 0; }
+.apc-sched .apc-recordstoolbar { margin: 14px 0 6px; }
+.apc-sched__stats b.is-negative { color: #c33b3b; }
+.apc-sched__tools { display: flex; align-items: center; gap: 8px; }
+.apc-sched__note { color: #9a640c; font-size: 9.5px; font-weight: 600; }
+.apc-sched__hint { flex-shrink: 0; margin: 8px 0 10px; color: var(--fg3); font-size: 10px; line-height: 1.5; }
+.apc-sched__hint b { color: var(--fg2); font-weight: 600; }
+.apc-sched__wrap { flex: 1; min-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.apc-sched__foot { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 2px 0; color: var(--fg3); font-size: 9.5px; }
+.apc-sched__legend { display: inline-flex; align-items: center; gap: 5px; }
+.apc-sched__legend i { width: 6px; height: 6px; border-radius: 50%; background: #c33b3b; }
+
+.apc-schedtable { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 10.5px; }
+.apc-schedtable th { height: 28px; padding: 0 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #f7f9fb; color: var(--fg3); font-size: 8.5px; font-weight: 600; letter-spacing: .04em; text-align: left; text-transform: uppercase; white-space: nowrap; vertical-align: middle; }
+.apc-schedtable thead tr:nth-child(2) th { height: 24px; background: #fbfcfd; color: var(--fg3); font-size: 8.5px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.apc-schedtable th.is-required { color: var(--fg2); }
+.apc-schedtable th.is-required i { margin-left: 2px; color: #c33b3b; font-style: normal; }
+.apc-schedtable td { height: 34px; padding: 3px 4px; border-right: 1px solid var(--n-100); border-bottom: 1px solid var(--n-100); background: #fff; vertical-align: middle; }
+.apc-schedtable tbody tr:last-child td { border-bottom: 0; }
+.apc-schedtable tbody tr:hover td { background: #fbfcfd; }
+.apc-schedtable thead tr:first-child th:nth-child(1), .apc-schedtable tbody td:nth-child(1) { position: sticky; left: 0; z-index: 3; background: #fff; }
+.apc-schedtable thead tr:first-child th:nth-child(2), .apc-schedtable tbody td:nth-child(2) { position: sticky; left: 54px; z-index: 3; background: #fff; border-right: 1px solid var(--line); box-shadow: 1px 0 0 rgba(16,30,50,.04); }
+.apc-schedtable thead tr:first-child th:nth-child(1), .apc-schedtable thead tr:first-child th:nth-child(2) { background: #f7f9fb; }
+.apc-schedtable tbody tr:hover td:nth-child(1), .apc-schedtable tbody tr:hover td:nth-child(2) { background: #fbfcfd; }
+
+.apc-schedtable__input { width: 100%; height: 26px; padding: 0 6px; border: 1px solid transparent; border-radius: 4px; outline: 0; background: transparent; color: var(--fg1); font-family: inherit; font-size: 10px; }
+.apc-schedtable__input:hover { border-color: var(--n-200); background: #fbfcfd; }
+.apc-schedtable__input:focus { border-color: var(--blue-500); background: #fff; box-shadow: 0 0 0 2px var(--blue-100); }
+.apc-schedtable__input::placeholder { color: var(--fg3); opacity: .5; }
+.apc-schedtable__input--money { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.apc-schedtable__input--date { padding: 0 4px; font-size: 9.5px; }
+.apc-schedtable td.is-missing-cell { background: #fffaf3; }
+.apc-schedtable td.is-missing-cell:hover { background: #fff6ea; }
+.apc-schedtable td.is-missing-cell .apc-schedtable__input::placeholder { color: #b0741a; opacity: .85; }
+
+.apc-schedtable__computed { padding-right: 8px !important; text-align: right; font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums; }
+.apc-schedtable__computed .is-negative { color: #c33b3b; }
+.apc-schedtable__empty { color: var(--fg3); }
+.apc-schedtable__actionhead { width: 60px; }
+.apc-schedtable .apc-records__empty { padding: 40px 8px !important; text-align: center; cursor: default; }
+.apc-schedtable__actions { width: 60px; padding: 0 3px !important; text-align: center; white-space: nowrap; }
