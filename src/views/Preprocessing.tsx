@@ -342,6 +342,7 @@ export function PreprocessingResult({
   bqId,
   bqCode,
   projectId,
+  necOption,
   linkedActivity
 }: {
   docs: ViewerDoc[];
@@ -356,6 +357,7 @@ export function PreprocessingResult({
   bqId?: string;
   bqCode?: string;
   projectId?: string;
+  necOption?: string;
   linkedActivity?: { code: string; name: string };
 }) {
   const viewerDocs = docs.length
@@ -525,18 +527,21 @@ export function PreprocessingResult({
     [bqBills]
   );
   const [billMappings, setBillMappings] = useState<Record<string, BillMappingRow>>(
-    () => mergeBillMappings(billDefaults, loadBillMappings(bqId, projectId))
+    () => mergeBillMappings(billDefaults, loadBillMappings(bqId, projectId, necOption))
   );
   const [selectedBillId, setSelectedBillId] = useState(bqBills[0]?.id ?? '');
 
   useEffect(() => {
     if (!bqId) return;
-    setBillMappings(mergeBillMappings(billDefaults, loadBillMappings(bqId, projectId)));
-  }, [bqId, billDefaults]);
+    setBillMappings(
+      mergeBillMappings(billDefaults, loadBillMappings(bqId, projectId, necOption))
+    );
+  }, [bqId, billDefaults, projectId, necOption]);
 
   useEffect(() => {
-    if (mappingMode && bqId) saveBillMappings(bqId, billMappings, projectId);
-  }, [mappingMode, bqId, billMappings]);
+    if (mappingMode && bqId)
+      saveBillMappings(bqId, billMappings, projectId, necOption);
+  }, [mappingMode, bqId, billMappings, projectId, necOption]);
 
   const selectedBill =
     bqBills.find(bill => bill.id === selectedBillId) ?? bqBills[0];
@@ -574,7 +579,7 @@ export function PreprocessingResult({
       next[billId] = { ...row, confirmed: true };
     });
     setBillMappings(next);
-    if (bqId) saveBillMappings(bqId, next, projectId);
+    if (bqId) saveBillMappings(bqId, next, projectId, necOption);
     onAction();
   };
 
@@ -1432,6 +1437,7 @@ export function CleanseBqView({
   heading = 'Cleanse BQ',
   onOpenCe,
   projectId,
+  necOption,
   linkedActivity,
   linkedBqs = [],
   sampleBq = false
@@ -1442,6 +1448,7 @@ export function CleanseBqView({
   heading?: string;
   onOpenCe?: (ceId: string) => void;
   projectId?: string;
+  necOption?: string;
   linkedActivity?: { code: string; name: string };
   linkedBqs?: Array<{ code: string; name: string }>;
   sampleBq?: boolean;
@@ -1467,9 +1474,9 @@ export function CleanseBqView({
   const links = useMemo(
     () =>
       isActivity
-        ? linksForActivity(bqId, projectId)
-        : linksForBq(bqId, projectId),
-    [bqId, projectId, isActivity]
+        ? linksForActivity(bqId, projectId, necOption)
+        : linksForBq(bqId, projectId, necOption),
+    [bqId, projectId, necOption, isActivity]
   );
   const docLabel = isActivity ? 'Activity Schedule' : 'BQ';
 

@@ -1878,7 +1878,7 @@ export function BimMapping({
   projectId?: string;
 }) {
   const [scenarios, setScenarios] = useState<MappingScenario[]>(() =>
-    loadMappingScenarios(projectId)
+    loadMappingScenarios(projectId, necOption)
   );
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [query, setQuery] = useState('');
@@ -1911,8 +1911,8 @@ export function BimMapping({
   const probeRef = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
-    saveMappingScenarios(scenarios, projectId);
-  }, [scenarios]);
+    saveMappingScenarios(scenarios, projectId, necOption);
+  }, [scenarios, projectId, necOption]);
 
   useEffect(() => {
     if (!notice) return;
@@ -2197,6 +2197,7 @@ export function BimMapping({
         key={costRun.id}
         scenario={costRun}
         projectId={projectId}
+        necOption={necOption}
         onBack={() => {
           setPage('library');
           setCostRun(null);

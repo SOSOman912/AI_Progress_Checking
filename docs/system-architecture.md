@@ -372,32 +372,45 @@ When the same measure comes from two sources, the BQ/AS value is always the lead
 
 ---
 
-## 5. Project-scoped storage
+## 5. Storage: project + NEC option
 
-All working data is namespaced by project ID. The project list and active selection are the only global keys.
+`src/data/storage.ts` is the only module that touches `localStorage`. It exposes four scopes:
+
+| Scope | Key shape | Used by |
+|---|---|---|
+| Global | `apc.x` | project list, active project, role |
+| Project | `apc.x:<projectId>` | data whose meaning is identical for every option |
+| **Option** | `apc.x:<projectId>:<option>` | data whose schema or meaning depends on the NEC option |
+| Scenario | `apc.x.<scenarioId>` | SMM material overrides (single documented exception) |
+
+A project only ever carries one NEC option, but the option is part of the key so data written under one contract form can never be read back by another. The repository API is `loadX(projectId, option)` / `saveX(value, projectId, option)`; passing no option keeps the plain project key for backwards compatibility.
 
 | Data | Storage key | Scope |
 |---|---|---|
 | Project list | `apc.projects.v1` | Global |
 | Active project | `apc.active-project.v1` | Global |
-| Document records | `apc.documents.v3:<projectId>` | Project |
-| CE records | `apc.ce-records.v2:<projectId>` | Project |
-| CE links | `apc.ce-links.v2:<projectId>` | Project |
-| BQ bill ↔ Schedule mapping | `apc.bq-activity-bill-map.v2:<projectId>` | Project |
-| Subletting contracts | `apc.subletting-contracts.v1:<projectId>` | Project |
+| Role | `apc.role` | Global |
+| Document records | `apc.documents.v3:<projectId>:<option>` | Option |
+| CE records | `apc.ce-records.v2:<projectId>:<option>` | Option |
+| CE links (single CE money source) | `apc.ce-links.v2:<projectId>:<option>` | Option |
+| BQ bill ↔ Schedule mapping | `apc.bq-activity-bill-map.v2:<projectId>:<option>` | Option |
+| Subletting contracts | `apc.subletting-contracts.v1:<projectId>:<option>` | Option |
+| Subletting schedule (BK-CP03.02-FR01) | `apc.subletting-schedule.v1:<projectId>:<option>` | Option |
+| Subletting assignment draft | `apc.subletting-draft.v1.<activityId>:<projectId>:<option>` | Option |
+| Mapping scenarios | `apc.mapping-scenarios.v2:<projectId>:<option>` | Option |
 | Pricing mode (import prices / quantity only) | `apc.pricing-mode.v1:<projectId>` | Project |
-| Subletting schedule (BK-CP03.02-FR01) | `apc.subletting-schedule.v1:<projectId>` | Project |
 | Subcontractor list | `apc.subcontractors.v1:<projectId>` | Project |
-| Mapping scenarios | `apc.mapping-scenarios.v2:<projectId>` | Project |
 | Scan assets | `apc.scan-assets.v2:<projectId>` | Project |
 | Measurement Library edits | `apc.measurement-library.v2:<projectId>` | Project |
 | SMM material overrides | `apc.smm-materials.<scenarioId>` | Scenario |
 
 Rules:
 
+- **Migration:** on first read, if the option bucket is empty the repository reads the pre-option key (`apc.x:<projectId>`), copies it into `apc.x:<projectId>:<option>` and continues from there. No user data is deleted.
 - Legacy global keys (`apc.documents.v2`, old CE/mapping/scan keys) are no longer read.
-- Switching projects remounts project-sensitive modules and reloads only that project's data.
-- Import, update and delete in one project must never appear in another.
+- Switching projects remounts project-sensitive modules and reloads only that project + option data.
+- Import, update and delete in one project/option must never appear in another project or another option.
+- Option-independent data (pricing mode, subcontractors, scan assets, Measurement Library) stays on the project key on purpose — they describe the project, not the contract form.
 
 ---
 

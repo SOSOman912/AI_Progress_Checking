@@ -1,7 +1,7 @@
 import {
   STORAGE_KEYS,
-  readProjectJson,
-  writeProjectJson
+  readOptionJson,
+  writeOptionJson
 } from '../data/storage';
 
 /**
@@ -328,8 +328,11 @@ const normaliseRow = (value: unknown, index: number): SublettingScheduleRow | nu
   return row;
 };
 
-export const loadScheduleRows = (projectId?: string): SublettingScheduleRow[] => {
-  const parsed = readProjectJson<unknown>(STORAGE_BASE, projectId, []);
+export const loadScheduleRows = (
+  projectId?: string,
+  option?: string
+): SublettingScheduleRow[] => {
+  const parsed = readOptionJson<unknown>(STORAGE_BASE, projectId, option, []);
   if (!Array.isArray(parsed)) return [];
   return parsed
     .map((value, index) => normaliseRow(value, index))
@@ -338,8 +341,9 @@ export const loadScheduleRows = (projectId?: string): SublettingScheduleRow[] =>
 
 export const saveScheduleRows = (
   rows: SublettingScheduleRow[],
-  projectId?: string
-): boolean => writeProjectJson(STORAGE_BASE, projectId, rows);
+  projectId?: string,
+  option?: string
+): boolean => writeOptionJson(STORAGE_BASE, projectId, option, rows);
 
 export interface ScheduleTotals {
   packages: number;

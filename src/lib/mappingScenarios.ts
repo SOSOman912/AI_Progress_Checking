@@ -1,8 +1,8 @@
 import type { NecOption } from './costPlans';
 import {
   STORAGE_KEYS,
-  readProjectJson,
-  writeProjectJson
+  readOptionJson,
+  writeOptionJson
 } from '../data/storage';
 
 export type MappingType = 'progress' | 'cost' | 'hybrid';
@@ -227,15 +227,19 @@ const isScenario = (value: unknown): value is MappingScenario => {
   );
 };
 
-export const loadMappingScenarios = (projectId?: string): MappingScenario[] => {
-  const parsed = readProjectJson<unknown>(STORAGE_BASE, projectId, []);
+export const loadMappingScenarios = (
+  projectId?: string,
+  option?: string
+): MappingScenario[] => {
+  const parsed = readOptionJson<unknown>(STORAGE_BASE, projectId, option, []);
   return Array.isArray(parsed) ? parsed.filter(isScenario) : [];
 };
 
 export const saveMappingScenarios = (
   scenarios: MappingScenario[],
-  projectId?: string
-): boolean => writeProjectJson(STORAGE_BASE, projectId, scenarios);
+  projectId?: string,
+  option?: string
+): boolean => writeOptionJson(STORAGE_BASE, projectId, option, scenarios);
 
 export const newMappingScenarioId = () =>
   `map-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;

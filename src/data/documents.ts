@@ -6,11 +6,7 @@
  * must read documents through this module, never by parsing the key themselves.
  */
 
-import {
-  STORAGE_KEYS,
-  readProjectJson,
-  writeProjectJson
-} from './storage';
+import { STORAGE_KEYS, readOptionJson, writeOptionJson } from './storage';
 
 export type DocumentFlow = 'bq' | 'activity';
 export type DocFileKind = 'bq' | 'sp' | 'pp' | 'drawing';
@@ -92,10 +88,14 @@ const isDocument = (value: unknown): value is StoredDocument => {
   );
 };
 
-export const loadDocuments = (projectId?: string): StoredDocument[] => {
-  const parsed = readProjectJson<StoredDocuments>(
+export const loadDocuments = (
+  projectId?: string,
+  option?: string
+): StoredDocument[] => {
+  const parsed = readOptionJson<StoredDocuments>(
     STORAGE_KEYS.documents,
     projectId,
+    option,
     {}
   );
   return Array.isArray(parsed.records)
@@ -105,19 +105,21 @@ export const loadDocuments = (projectId?: string): StoredDocument[] => {
 
 export const saveDocuments = (
   records: StoredDocument[],
-  projectId?: string
+  projectId?: string,
+  option?: string
 ): boolean =>
-  writeProjectJson(STORAGE_KEYS.documents, projectId, { records });
+  writeOptionJson(STORAGE_KEYS.documents, projectId, option, { records });
 
 export const upsertDocument = (
   record: StoredDocument,
-  projectId?: string
+  projectId?: string,
+  option?: string
 ): StoredDocument[] => {
-  const existing = loadDocuments(projectId);
+  const existing = loadDocuments(projectId, option);
   const next = existing.some(item => item.id === record.id)
     ? existing.map(item => (item.id === record.id ? record : item))
     : [record, ...existing];
-  saveDocuments(next, projectId);
+  saveDocuments(next, projectId, option);
   return next;
 };
 
@@ -143,9 +145,10 @@ export const documentsOfFlow = (
 /** Options for a CE / mapping picker, resolved from stored documents. */
 export const loadDocumentOptions = (
   projectId: string | undefined,
-  flow: DocumentFlow
+  flow: DocumentFlow,
+  option?: string
 ): DocumentOption[] =>
-  documentsOfFlow(loadDocuments(projectId), flow).map(record => ({
+  documentsOfFlow(loadDocuments(projectId, option), flow).map(record => ({
     id: record.id,
     code: record.code,
     name: record.name,

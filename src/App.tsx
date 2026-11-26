@@ -284,7 +284,9 @@ export default function App() {
               onCloseDrawing: () => setDrawingSheet(null),
               onQtyChange: editQty,
               onRateChange: editRate,
-              showMoney: canViewMoney
+              showMoney: canViewMoney,
+              projectId: activeProject?.id,
+              necOption: activeProject?.necOption
             }}
           />
         ) : (

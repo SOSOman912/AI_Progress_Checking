@@ -294,7 +294,11 @@
         <div class="sec__num">01</div>
         <div>
           <h2>資料存放方式，以及不同 Option / Project 如何分開</h2>
-          <p>現有儲存分成三層：全域、專案級、Scenario 級。Option 不是其中一層。</p>
+          <p>
+            修復後儲存分成四層：全域、專案級、<b>Option 級</b>、Scenario 級（Option 分區見
+            <a href="#s5">05 節 P0 follow-up</a>）。以下為 Option 分區前的診斷紀錄，key 形狀已由
+            <span class="mono">apc.x:&lt;projectId&gt;:&lt;option&gt;</span> 取代。
+          </p>
         </div>
       </div>
 
@@ -1016,6 +1020,112 @@
         <div class="note warn">
           <b>仍然存在（P1，未處理）：</b>Option 依然不是資料分區（同一 project 不能並存兩個 Option 的資料）；
           Option E / F 的專屬畫面（invoices、cost records）仍未實作；demo 資料仍未持久化。
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>P0 follow-up：Option 納入 storage 分區</h3>
+        <p>專案仍然只會有一個 NEC Option，但 option 現在是 key 的一部分，所以不同合約形式的資料永遠不會互相讀取。</p>
+        <div class="tablewrap">
+          <table class="tbl">
+            <thead>
+              <tr><th>Scope</th><th>Key 形狀</th><th>包含</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="b info">Global</span></td>
+                <td class="mono">apc.x</td>
+                <td>project 清單、active project、role</td>
+              </tr>
+              <tr>
+                <td><span class="b ok">Option</span></td>
+                <td class="mono">apc.x:&lt;projectId&gt;:&lt;option&gt;</td>
+                <td>
+                  documents、ce-records、ce-links、bq-activity-bill-map、
+                  subletting contracts / schedule / draft、mapping-scenarios
+                </td>
+              </tr>
+              <tr>
+                <td><span class="b blue">Project</span></td>
+                <td class="mono">apc.x:&lt;projectId&gt;</td>
+                <td>pricing-mode、subcontractors、scan-assets、measurement-library</td>
+              </tr>
+              <tr>
+                <td><span class="b warn">Scenario</span></td>
+                <td class="mono">apc.x.&lt;scenarioId&gt;</td>
+                <td>smm-materials（唯一例外）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note ok">
+          <b>遷移：</b>第一次讀取時如果 option bucket 是空的，會先讀舊的 <span class="mono">apc.x:&lt;projectId&gt;</span>，
+          複製到 <span class="mono">apc.x:&lt;projectId&gt;:&lt;option&gt;</span> 再繼續，不會刪除任何既有資料。
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>目標架構進度（不含 Option E / F）</h3>
+        <div class="tablewrap">
+          <table class="tbl">
+            <thead>
+              <tr><th>層</th><th>目標</th><th>現況</th><th class="center">狀態</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>① Option 能力表</b></td>
+                <td>單一 <span class="mono">optionInfo()</span> 驅動 flows / 主文件 / CE 目標 / 文件需求</td>
+                <td>已完成；<span class="mono">costPlans</span> 由它衍生</td>
+                <td class="center"><span class="b ok">完成</span></td>
+              </tr>
+              <tr>
+                <td><b>② Data repository</b></td>
+                <td>所有讀寫經 <span class="mono">src/data/*</span>，key 按 project + option 分區</td>
+                <td>已完成；views/libs 0 處直接 localStorage</td>
+                <td class="center"><span class="b ok">完成</span></td>
+              </tr>
+              <tr>
+                <td><b>③ Pure view</b></td>
+                <td>View 只收 props，不持有 domain 邏輯</td>
+                <td>不再碰儲存，但仍持有 table 計算與 demo 常數</td>
+                <td class="center"><span class="b warn">部分</span></td>
+              </tr>
+              <tr>
+                <td><b>④ Seed / demo</b></td>
+                <td>demo 資料只作建 project 時的 seed，寫入專案 key</td>
+                <td><span class="mono">demoData</span> 仍在記憶體，重載即重設，所有 project 共用</td>
+                <td class="center"><span class="b bad">未做</span></td>
+              </tr>
+              <tr>
+                <td><b>⑤ 實體引用</b></td>
+                <td>scenario / link 用 document id 與 item id，可回溯</td>
+                <td><span class="mono">sources</span> 仍存文件名稱；CE link 的 itemIds 指向 demo 常數</td>
+                <td class="center"><span class="b bad">未做</span></td>
+              </tr>
+              <tr>
+                <td><b>⑥ Schema 版本</b></td>
+                <td>payload 帶 version + migrate，key 改名不再是唯一手段</td>
+                <td>只有 key 內版本與今次的 key 遷移</td>
+                <td class="center"><span class="b bad">未做</span></td>
+              </tr>
+              <tr>
+                <td><b>⑦ 錯誤與容量</b></td>
+                <td>寫入失敗（quota）要有回饋，大檔改存 IndexedDB</td>
+                <td>寫入失敗靜默；CE 圖檔仍在 localStorage</td>
+                <td class="center"><span class="b bad">未做</span></td>
+              </tr>
+              <tr>
+                <td><b>⑧ 測試</b></td>
+                <td>repository 為純函式，補 unit test 鎖住 key 與遷移行為</td>
+                <td>沒有測試</td>
+                <td class="center"><span class="b bad">未做</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          <b>刻意未做：</b>Option E（cost reimbursable）與 F（management contract）的 invoices / cost records 版面與資料模型，
+          按指示暫時不處理；它們目前仍會落到 BQ 分頁。
         </div>
       </div>
 

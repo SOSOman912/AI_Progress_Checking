@@ -59,13 +59,13 @@ export function SublettingPage({
   onFlow: (flow: DocFlow) => void;
 }) {
   const activityOptions = useMemo(
-    () => loadPricingOptions(projectId, 'activity'),
-    [projectId]
+    () => loadPricingOptions(projectId, 'activity', necOption),
+    [projectId, necOption]
   );
   const [pricingMode] = usePricingMode(projectId);
   const moneyVisible = pricingMode === 'priced';
   const [contracts, setContracts] = useState<SublettingContract[]>(() =>
-    loadContracts(projectId)
+    loadContracts(projectId, necOption)
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [popupActivityId, setPopupActivityId] = useState('');
@@ -86,26 +86,26 @@ export function SublettingPage({
   const [error, setError] = useState('');
   const [view, setView] = useState<'schedule' | 'contracts'>('schedule');
   const [scheduleRows, setScheduleRows] = useState<SublettingScheduleRow[]>(() =>
-    loadScheduleRows(projectId)
+    loadScheduleRows(projectId, necOption)
   );
 
   useEffect(() => {
-    setContracts(loadContracts(projectId));
+    setContracts(loadContracts(projectId, necOption));
     setSubcontractors(loadSubcontractors(projectId));
-    setScheduleRows(loadScheduleRows(projectId));
-  }, [projectId]);
+    setScheduleRows(loadScheduleRows(projectId, necOption));
+  }, [projectId, necOption]);
 
   useEffect(() => {
-    saveScheduleRows(scheduleRows, projectId);
-  }, [scheduleRows, projectId]);
+    saveScheduleRows(scheduleRows, projectId, necOption);
+  }, [scheduleRows, projectId, necOption]);
 
   useEffect(() => {
     saveSubcontractors(subcontractors, projectId);
   }, [subcontractors, projectId]);
 
   useEffect(() => {
-    saveContracts(contracts, projectId);
-  }, [contracts, projectId]);
+    saveContracts(contracts, projectId, necOption);
+  }, [contracts, projectId, necOption]);
 
   const assignment = useMemo(() => {
     const map = new Map<string, SublettingContract>();
@@ -210,7 +210,11 @@ export function SublettingPage({
           existingAssignments[itemId] = subId;
         });
       });
-    const draftAssignments = loadDraftAssignments(projectId, pendingActivityId);
+    const draftAssignments = loadDraftAssignments(
+      projectId,
+      pendingActivityId,
+      necOption
+    );
     const validIds = new Set(subcontractors.map(sub => sub.id));
     const merged = Object.fromEntries(
       Object.entries({ ...existingAssignments, ...draftAssignments }).filter(
@@ -222,7 +226,7 @@ export function SublettingPage({
     setSelectedItemIds(new Set());
     setSaveNote('');
     setExpandedActivityId('');
-    setBqSchedules(loadMappedBqSchedules(projectId));
+    setBqSchedules(loadMappedBqSchedules(projectId, necOption));
     setError('');
     setListOpen(false);
     setListError('');
@@ -407,7 +411,7 @@ export function SublettingPage({
   const saveChanges = () => {
     if (!builderActivity) return;
     applyLatestAssignments();
-    clearDraftAssignments(projectId, builderActivity.id);
+    clearDraftAssignments(projectId, builderActivity.id, necOption);
     setSelectedItemIds(new Set());
     setSaveNote(
       `${assignedCount} item${assignedCount === 1 ? '' : 's'} saved`
@@ -446,7 +450,7 @@ export function SublettingPage({
       setError('Select a subcontractor for at least one Activity item.');
       return;
     }
-    clearDraftAssignments(projectId, builderActivity.id);
+    clearDraftAssignments(projectId, builderActivity.id, necOption);
     cancelBuilder();
   };
 

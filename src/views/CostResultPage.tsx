@@ -45,25 +45,27 @@ function CeDetails({ details }: { details: CostCeDetail[] }) {
 export function CostReviewBody({
   scenario,
   mode,
-  projectId
+  projectId,
+  necOption
 }: {
   scenario: MappingScenario;
   mode: CostResultMode;
   projectId?: string;
+  necOption?: string;
 }) {
   const [pricingMode] = usePricingMode(projectId);
   const moneyVisible = pricingMode === 'priced';
   /* CE money always comes from the CE repository (apc.ce-links), never a constant. */
   const ceLinks = useMemo<CostCeInput[]>(
     () =>
-      loadCeLinks(projectId).map(link => ({
+      loadCeLinks(projectId, necOption).map(link => ({
         id: link.ceId,
         ref: link.ceCode,
         title: link.title,
         amount: link.amount,
         itemIds: link.itemIds
       })),
-    [projectId]
+    [projectId, necOption]
   );
   const [selectedCe, setSelectedCe] = useState<string[]>(() =>
     scenario.sources?.ce ? ceLinks.map(record => record.id) : []
@@ -451,11 +453,13 @@ export function CostReviewBody({
 export function CostResultPage({
   scenario,
   onBack,
-  projectId
+  projectId,
+  necOption
 }: {
   scenario: MappingScenario;
   onBack: () => void;
   projectId?: string;
+  necOption?: string;
 }) {
   const result = useMemo(() => buildCostResult(scenario), [scenario]);
   const [tab, setTab] = useState<CostResultMode>(result.modes[0]);
@@ -498,7 +502,12 @@ export function CostResultPage({
         </div>
       )}
 
-      <CostReviewBody scenario={scenario} mode={tab} projectId={projectId} />
+      <CostReviewBody
+        scenario={scenario}
+        mode={tab}
+        projectId={projectId}
+        necOption={necOption}
+      />
     </main>
   );
 }

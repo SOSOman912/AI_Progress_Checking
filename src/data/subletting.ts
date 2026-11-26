@@ -9,12 +9,13 @@
 
 import {
   STORAGE_KEYS,
+  optionKey,
   projectKey,
   readJson,
-  readProjectJson,
-  removeKey,
+  readOptionJson,
+  removeOptionKey,
   writeJson,
-  writeProjectJson
+  writeOptionJson
 } from './storage';
 
 export interface SublettingContract {
@@ -45,10 +46,14 @@ const isContract = (value: unknown): value is SublettingContract => {
   );
 };
 
-export const loadContracts = (projectId?: string): SublettingContract[] => {
-  const parsed = readProjectJson<unknown>(
+export const loadContracts = (
+  projectId?: string,
+  option?: string
+): SublettingContract[] => {
+  const parsed = readOptionJson<unknown>(
     STORAGE_KEYS.sublettingContracts,
     projectId,
+    option,
     []
   );
   return Array.isArray(parsed) ? parsed.filter(isContract) : [];
@@ -56,21 +61,29 @@ export const loadContracts = (projectId?: string): SublettingContract[] => {
 
 export const saveContracts = (
   contracts: SublettingContract[],
-  projectId?: string
+  projectId?: string,
+  option?: string
 ): boolean =>
-  writeProjectJson(STORAGE_KEYS.sublettingContracts, projectId, contracts);
+  writeOptionJson(STORAGE_KEYS.sublettingContracts, projectId, option, contracts);
 
 /* --------------------------------------------------- per-activity drafts */
 
-const draftKey = (projectId: string | undefined, activityId: string): string =>
-  projectKey(`${STORAGE_KEYS.sublettingDraft}.${activityId}`, projectId);
+const draftKey = (
+  projectId: string | undefined,
+  option: string | undefined,
+  activityId: string
+): string =>
+  option
+    ? optionKey(`${STORAGE_KEYS.sublettingDraft}.${activityId}`, projectId, option)
+    : projectKey(`${STORAGE_KEYS.sublettingDraft}.${activityId}`, projectId);
 
 export const loadDraftAssignments = (
   projectId: string | undefined,
-  activityId: string
+  activityId: string,
+  option?: string
 ): Record<string, string> => {
   if (!activityId) return {};
-  const parsed = readJson<unknown>(draftKey(projectId, activityId), {});
+  const parsed = readJson<unknown>(draftKey(projectId, option, activityId), {});
   if (!parsed || typeof parsed !== 'object') return {};
   return Object.fromEntries(
     Object.entries(parsed as Record<string, unknown>).filter(
@@ -82,13 +95,15 @@ export const loadDraftAssignments = (
 export const saveDraftAssignments = (
   projectId: string | undefined,
   activityId: string,
-  assignments: Record<string, string>
-): boolean => writeJson(draftKey(projectId, activityId), assignments);
+  assignments: Record<string, string>,
+  option?: string
+): boolean => writeJson(draftKey(projectId, option, activityId), assignments);
 
 export const clearDraftAssignments = (
   projectId: string | undefined,
-  activityId: string
-): void => removeKey(draftKey(projectId, activityId));
+  activityId: string,
+  option?: string
+): void => removeOptionKey(`${STORAGE_KEYS.sublettingDraft}.${activityId}`, projectId, option);
 
 /* ------------------------------------------------------------- re-exports */
 

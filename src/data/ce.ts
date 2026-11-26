@@ -10,11 +10,7 @@
  * can never diverge.
  */
 
-import {
-  STORAGE_KEYS,
-  readProjectJson,
-  writeProjectJson
-} from './storage';
+import { STORAGE_KEYS, readOptionJson, writeOptionJson } from './storage';
 import { loadDocumentOptions } from './documents';
 import type { DocumentOption } from './documents';
 
@@ -126,10 +122,14 @@ const isCeLink = (value: unknown): value is CeLink => {
 
 /* ------------------------------------------------------------------ records */
 
-export const loadCeRecords = (projectId?: string): CeRecord[] => {
-  const parsed = readProjectJson<unknown[]>(
+export const loadCeRecords = (
+  projectId?: string,
+  option?: string
+): CeRecord[] => {
+  const parsed = readOptionJson<unknown[]>(
     STORAGE_KEYS.ceRecords,
     projectId,
+    option,
     []
   );
   return Array.isArray(parsed) ? parsed.filter(isCeRecord) : [];
@@ -137,53 +137,74 @@ export const loadCeRecords = (projectId?: string): CeRecord[] => {
 
 export const saveCeRecords = (
   records: CeRecord[],
-  projectId?: string
-): boolean => writeProjectJson(STORAGE_KEYS.ceRecords, projectId, records);
+  projectId?: string,
+  option?: string
+): boolean =>
+  writeOptionJson(STORAGE_KEYS.ceRecords, projectId, option, records);
 
 export const upsertCeRecord = (
   record: CeRecord,
-  projectId?: string
+  projectId?: string,
+  option?: string
 ): CeRecord[] => {
-  const existing = loadCeRecords(projectId);
+  const existing = loadCeRecords(projectId, option);
   const next = existing.some(item => item.id === record.id)
     ? existing.map(item => (item.id === record.id ? record : item))
     : [record, ...existing];
-  saveCeRecords(next, projectId);
+  saveCeRecords(next, projectId, option);
   return next;
 };
 
 export const findCeRecord = (
   ceId: string,
-  projectId?: string
+  projectId?: string,
+  option?: string
 ): CeRecord | null =>
-  loadCeRecords(projectId).find(record => record.id === ceId) ?? null;
+  loadCeRecords(projectId, option).find(record => record.id === ceId) ?? null;
 
 /* -------------------------------------------------------------------- links */
 
-export const loadCeLinks = (projectId?: string): CeLink[] => {
-  const parsed = readProjectJson<unknown[]>(
+export const loadCeLinks = (
+  projectId?: string,
+  option?: string
+): CeLink[] => {
+  const parsed = readOptionJson<unknown[]>(
     STORAGE_KEYS.ceLinks,
     projectId,
+    option,
     []
   );
   return Array.isArray(parsed) ? parsed.filter(isCeLink) : [];
 };
 
-export const saveCeLinks = (links: CeLink[], projectId?: string): boolean =>
-  writeProjectJson(STORAGE_KEYS.ceLinks, projectId, links);
+export const saveCeLinks = (
+  links: CeLink[],
+  projectId?: string,
+  option?: string
+): boolean => writeOptionJson(STORAGE_KEYS.ceLinks, projectId, option, links);
 
-export const saveCeLink = (link: CeLink, projectId?: string): CeLink[] => {
+export const saveCeLink = (
+  link: CeLink,
+  projectId?: string,
+  option?: string
+): CeLink[] => {
   const next = [
     link,
-    ...loadCeLinks(projectId).filter(item => item.ceId !== link.ceId)
+    ...loadCeLinks(projectId, option).filter(item => item.ceId !== link.ceId)
   ];
-  saveCeLinks(next, projectId);
+  saveCeLinks(next, projectId, option);
   return next;
 };
 
-export const removeCeLink = (ceId: string, projectId?: string): CeLink[] => {
-  const next = loadCeLinks(projectId).filter(link => link.ceId !== ceId);
-  saveCeLinks(next, projectId);
+export const removeCeLink = (
+  ceId: string,
+  projectId?: string,
+  option?: string
+): CeLink[] => {
+  const next = loadCeLinks(projectId, option).filter(
+    link => link.ceId !== ceId
+  );
+  saveCeLinks(next, projectId, option);
   return next;
 };
 
@@ -197,9 +218,10 @@ export const ceLinkTarget = (link: CeLink) => ({
 export const linksForTarget = (
   targetId: string | undefined,
   targetType: CeTargetType,
-  projectId?: string
+  projectId?: string,
+  option?: string
 ): CeLink[] => {
-  const links = loadCeLinks(projectId);
+  const links = loadCeLinks(projectId, option);
   if (!targetId) return links;
   return links.filter(link => {
     const target = ceLinkTarget(link);
@@ -207,13 +229,17 @@ export const linksForTarget = (
   });
 };
 
-export const linksForBq = (bqId?: string, projectId?: string): CeLink[] =>
-  linksForTarget(bqId, 'bq', projectId);
+export const linksForBq = (
+  bqId?: string,
+  projectId?: string,
+  option?: string
+): CeLink[] => linksForTarget(bqId, 'bq', projectId, option);
 
 export const linksForActivity = (
   activityId?: string,
-  projectId?: string
-): CeLink[] => linksForTarget(activityId, 'activity', projectId);
+  projectId?: string,
+  option?: string
+): CeLink[] => linksForTarget(activityId, 'activity', projectId, option);
 
 /* ------------------------------------------------------------ derived money */
 
@@ -276,8 +302,11 @@ export const ceRecordAmount = (record: CeRecord): number => {
 /** BQ / Activity documents available as a CE link target. */
 export const loadPricingOptions = (
   projectId: string | undefined,
-  target: CeTargetType
-): DocumentOption[] => loadDocumentOptions(projectId, target);
+  target: CeTargetType,
+  option?: string
+): DocumentOption[] => loadDocumentOptions(projectId, target, option);
 
-export const loadBqOptions = (projectId?: string): DocumentOption[] =>
-  loadPricingOptions(projectId, 'bq');
+export const loadBqOptions = (
+  projectId?: string,
+  option?: string
+): DocumentOption[] => loadPricingOptions(projectId, 'bq', option);

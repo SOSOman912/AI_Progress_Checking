@@ -92,7 +92,10 @@ export function DocumentManagement({
   projectId?: string;
 }) {
   const option = optionInfo(necOption);
-  const initialRecords = useMemo(() => loadRecords(projectId), [projectId]);
+  const initialRecords = useMemo(
+    () => loadRecords(projectId, necOption),
+    [projectId, necOption]
+  );
   const [records, setRecords] = useState<BqRecord[]>(initialRecords);
   const [draftFiles, setDraftFiles] = useState<DocFile[]>([]);
   const [workflowRecordId, setWorkflowRecordId] = useState<string | null>(null);
@@ -147,8 +150,8 @@ export function DocumentManagement({
   });
 
   useEffect(() => {
-    saveDocuments(records, projectId);
-  }, [records, projectId]);
+    saveDocuments(records, projectId, necOption);
+  }, [records, projectId, necOption]);
 
   useEffect(() => {
     if (!recordMenuId) return;
@@ -615,6 +618,7 @@ export function DocumentManagement({
               bqId={activeRecord?.id}
               bqCode={activeRecord?.code}
               projectId={projectId}
+              necOption={necOption}
               linkedActivity={activeLinkedActivity}
               onAction={resultMode === 'reprocess' ? startReprocess : confirmBq}
             />
@@ -627,6 +631,7 @@ export function DocumentManagement({
             heading={isActivityFlow ? 'Cleanse Activity Schedule' : 'Cleanse BQ'}
             onOpenCe={openCeResult}
             projectId={projectId}
+            necOption={necOption}
             linkedActivity={activeLinkedActivity}
             linkedBqs={linkedBqRecords}
             sampleBq={activityMain && !isActivityFlow}

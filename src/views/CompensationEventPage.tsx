@@ -181,7 +181,10 @@ export function CompensationEventPage({
 }) {
   const [pricingMode] = usePricingMode(projectId);
   const moneyVisible = pricingMode === 'priced';
-  const initialRecords = useMemo(() => loadRecords(projectId), [projectId]);
+  const initialRecords = useMemo(
+    () => loadRecords(projectId, necOption),
+    [projectId, necOption]
+  );
   const [records, setRecords] = useState<CeRecord[]>(initialRecords);
   const openedInitial = useRef<string | null>(null);
   const [view, setView] = useState<CeView>('records');
@@ -198,10 +201,12 @@ export function CompensationEventPage({
   const targetLabel = targetType === 'activity' ? 'Activity Schedule' : 'BQ';
   const targetItems = targetType === 'activity' ? ACTIVITY_ITEMS : BQ_ITEMS;
   const targetOptions = useMemo(
-    () => loadPricingOptions(projectId, targetType),
-    [projectId, targetType]
+    () => loadPricingOptions(projectId, targetType, necOption),
+    [projectId, targetType, necOption]
   );
-  const [links, setLinks] = useState<CeLink[]>(() => loadCeLinks(projectId));
+  const [links, setLinks] = useState<CeLink[]>(() =>
+    loadCeLinks(projectId, necOption)
+  );
   const [linkTargetId, setLinkTargetId] = useState('');
   const [linkItemIds, setLinkItemIds] = useState<string[]>([]);
   const [relinkOpen, setRelinkOpen] = useState(false);
@@ -209,8 +214,8 @@ export function CompensationEventPage({
   const [relinkItemIds, setRelinkItemIds] = useState<string[]>([]);
 
   useEffect(() => {
-    saveCeRecords(records, projectId);
-  }, [records, projectId]);
+    saveCeRecords(records, projectId, necOption);
+  }, [records, projectId, necOption]);
 
   useEffect(() => {
     if (!initialRecordId || openedInitial.current === initialRecordId) return;
@@ -274,7 +279,8 @@ export function CompensationEventPage({
                 bqName: targetType === 'bq' ? target.name : undefined,
                 itemIds: linkItemIds
               },
-              projectId
+              projectId,
+              necOption
             );
             setLinks(next);
           }
@@ -438,8 +444,8 @@ export function CompensationEventPage({
 
   const deleteRecord = (id: string) => {
     setRecords(prev => prev.filter(record => record.id !== id));
-    removeCeLink(id, projectId);
-    setLinks(loadCeLinks(projectId));
+    removeCeLink(id, projectId, necOption);
+    setLinks(loadCeLinks(projectId, necOption));
     setMenuId(null);
     if (activeRecordId === id) {
       setActiveRecordId(null);
@@ -500,7 +506,8 @@ export function CompensationEventPage({
         bqName: targetType === 'bq' ? target.name : undefined,
         itemIds: selectedIds
       },
-      projectId
+      projectId,
+      necOption
     );
     setLinks(next);
     setRelinkOpen(false);

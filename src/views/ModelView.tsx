@@ -179,7 +179,8 @@ function BqStrip({
   onClose,
   showMoney,
   pricingLabel = 'Bill of Quantities',
-  projectId
+  projectId,
+  necOption
 }: {
   lines: BillLine[];
   activeLine: string;
@@ -193,11 +194,12 @@ function BqStrip({
   showMoney: boolean;
   pricingLabel?: string;
   projectId?: string;
+  necOption?: string;
 }) {
   const [query, setQuery] = useState('');
   const shown = filterBillLines(lines, query);
   const ceDetails: Record<string, BqCeDetail[]> = {};
-  loadCeLinks(projectId).forEach(link => {
+  loadCeLinks(projectId, necOption).forEach(link => {
     const allocated = link.itemIds.length
       ? link.amount / link.itemIds.length
       : link.amount;
@@ -297,7 +299,8 @@ function BqDetails({
   onClose,
   showMoney,
   pricingLabel = 'Bill of Quantities',
-  projectId
+  projectId,
+  necOption
 }: {
   line: BillLine;
   data: ProjectData;
@@ -307,6 +310,7 @@ function BqDetails({
   showMoney: boolean;
   pricingLabel?: string;
   projectId?: string;
+  necOption?: string;
 }) {
   const docLabel = pricingLabel === 'Activity Schedule' ? 'Activity Schedule' : 'BQ';
   const [level, setLevel] = useState('all');
@@ -351,7 +355,9 @@ function BqDetails({
       : group
         ? [{ title: group.label, description: rule?.basis || '' }]
         : [];
-  const ceLinks = loadCeLinks(projectId).filter(link => link.itemIds.includes(line.id));
+  const ceLinks = loadCeLinks(projectId, necOption).filter(link =>
+    link.itemIds.includes(line.id)
+  );
   const netCeValue = ceLinks.reduce((sum, link) => sum + link.amount, 0);
   const netCe = ceLinks.length ? netCeValue : null;
   const bqOriginal = line.rate == null ? null : contractQty * line.rate;
@@ -1396,7 +1402,8 @@ function ModelWorkspace({
   onRateChange,
   showMoney,
   pricingLabel = 'Bill of Quantities',
-  projectId
+  projectId,
+  necOption
 }: {
   data: ProjectData;
   active: string | null;
@@ -1424,6 +1431,7 @@ function ModelWorkspace({
   showMoney: boolean;
   pricingLabel?: string;
   projectId?: string;
+  necOption?: string;
 }) {
   const [bqHeight, setBqHeight] = useState(350);
   const [dockWidth, setDockWidth] = useState<number | null>(null);
@@ -1631,6 +1639,7 @@ function ModelWorkspace({
                               showMoney={showMoney}
                               pricingLabel={pricingLabel}
                               projectId={projectId}
+                              necOption={necOption}
                             />
                           )
                         }
@@ -1710,6 +1719,7 @@ function ModelWorkspace({
             showMoney={showMoney}
             pricingLabel={pricingLabel}
             projectId={projectId}
+            necOption={necOption}
           />
         )}
       </div>
