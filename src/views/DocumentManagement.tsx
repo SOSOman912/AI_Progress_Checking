@@ -3,9 +3,15 @@ import { Icon, type IconName } from '../components/Icon';
 import { CompensationEventPage } from './CompensationEventPage';
 import { SublettingPage } from './SublettingPage';
 import { FlowTabs, type DocFlow } from '../components/FlowTabs';
-import type { NecOption } from '../lib/projects';
-import { documentsStorageKey } from '../lib/projectStorage';
+import { optionInfo, type NecOption, type PricingFlow } from '../lib/projects';
 import { PRICING_MODE_INFO, usePricingMode } from '../lib/pricingMode';
+import {
+  loadDocuments,
+  nextDocumentCode,
+  saveDocuments,
+  type StoredDocument as BqRecord,
+  type StoredDocumentFile as DocFile
+} from '../data/documents';
 import {
   ACTIVITY_ITEMS,
   BqRecordTable,
@@ -23,94 +29,8 @@ type WorkspaceView = 'documents' | 'result' | 'cleanse';
 type ImportPhase = 'upload' | 'link' | 'processing' | 'complete';
 type ResultMode = 'review' | 'reprocess';
 
-interface DocFile {
-  id: string;
-  kind: DocKind;
-  name: string;
-  size: number;
-  progress: number;
-  status: DocStatus;
-  addedAt: number;
-}
-
-interface BqRecord {
-  id: string;
-  code: string;
-  name: string;
-  files: DocFile[];
-  status: 'pending' | 'confirm';
-  flow?: 'bq' | 'activity';
-  processedAt: number;
-  activityItemIds?: string[];
-  linkedActivityId?: string;
-  linkedActivityCode?: string;
-  linkedActivityName?: string;
-}
-
-interface StoredRecords {
-  records: BqRecord[];
-}
-
-const isDocFile = (value: unknown): value is DocFile => {
-  if (!value || typeof value !== 'object') return false;
-  const file = value as Partial<DocFile>;
-  return (
-    typeof file.id === 'string' &&
-    (file.kind === 'bq' || file.kind === 'sp' || file.kind === 'pp' || file.kind === 'drawing') &&
-    typeof file.name === 'string' &&
-    typeof file.size === 'number' &&
-    typeof file.progress === 'number' &&
-    (file.status === 'uploading' || file.status === 'ready') &&
-    typeof file.addedAt === 'number'
-  );
-};
-
-const isBqRecord = (value: unknown): value is BqRecord => {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Partial<BqRecord>;
-  return (
-    typeof record.id === 'string' &&
-    typeof record.code === 'string' &&
-    typeof record.name === 'string' &&
-    Array.isArray(record.files) &&
-    record.files.every(isDocFile) &&
-    (record.status === 'pending' || record.status === 'confirm') &&
-    typeof record.processedAt === 'number' &&
-    (record.activityItemIds === undefined ||
-      (Array.isArray(record.activityItemIds) &&
-        record.activityItemIds.every(id => typeof id === 'string'))) &&
-    (record.linkedActivityId === undefined ||
-      typeof record.linkedActivityId === 'string') &&
-    (record.linkedActivityCode === undefined ||
-      typeof record.linkedActivityCode === 'string') &&
-    (record.linkedActivityName === undefined ||
-      typeof record.linkedActivityName === 'string')
-  );
-};
-
-const loadRecords = (projectId?: string): BqRecord[] => {
-  try {
-    const current = window.localStorage.getItem(documentsStorageKey(projectId));
-    if (!current) return [];
-    const parsed = JSON.parse(current) as Partial<StoredRecords>;
-    return Array.isArray(parsed.records)
-      ? parsed.records.filter(isBqRecord)
-      : [];
-  } catch {
-    return [];
-  }
-};
-
-const nextRecordCode = (records: BqRecord[], flow: 'bq' | 'activity' = 'bq') => {
-  const prefix = flow === 'activity' ? 'AS' : 'BQ';
-  const max = records
-    .filter(record => (record.flow ?? 'bq') === flow)
-    .reduce((value, record) => {
-      const number = Number(record.code.split('-').pop());
-      return Number.isFinite(number) ? Math.max(value, number) : value;
-    }, 0);
-  return `${prefix}-2026-${String(max + 1).padStart(3, '0')}`;
-};
+const loadRecords = loadDocuments;
+const nextRecordCode = nextDocumentCode;
 
 const DOC_TYPES: Array<{
   id: DocKind;
@@ -171,6 +91,7 @@ export function DocumentManagement({
   standard?: string;
   projectId?: string;
 }) {
+  const option = optionInfo(necOption);
   const initialRecords = useMemo(() => loadRecords(projectId), [projectId]);
   const [records, setRecords] = useState<BqRecord[]>(initialRecords);
   const [draftFiles, setDraftFiles] = useState<DocFile[]>([]);
@@ -179,7 +100,7 @@ export function DocumentManagement({
   const [resultMode, setResultMode] = useState<ResultMode>('review');
   const [recordMenuId, setRecordMenuId] = useState<string | null>(null);
   const [activeFlow, setActiveFlow] = useState<DocFlow>(
-    necOption === 'A' || necOption === 'C' ? 'activity' : 'bq'
+    optionInfo(necOption).flows[0]
   );
   const [ceRecordId, setCeRecordId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -205,28 +126,28 @@ export function DocumentManagement({
   const [recordQuery, setRecordQuery] = useState('');
   const [pricingMode, setPricingMode] = usePricingMode(projectId);
   const isActivityFlow = activeFlow === 'activity';
-  const activityMain = necOption === 'A' || necOption === 'C';
-  const isBqReference = activityMain && !isActivityFlow;
+  const activityMain = option.activitySchedule;
+  const isBqReference = option.bqReference && !isActivityFlow;
   const mappingMode = activityMain && !isActivityFlow;
   const flowKind: 'bq' | 'activity' = isActivityFlow ? 'activity' : 'bq';
-  const importTypes = DOC_TYPES.map((type, index) => {
-    if (index === 0) {
-      return isActivityFlow
-        ? { ...type, label: 'Activity Schedule', short: 'AS', icon: 'clipboard-check' as IconName }
-        : type;
+  const importTypes = DOC_TYPES.map(type => {
+    if (type.id === 'bq') {
+      const flow = isActivityFlow ? 'activity' : 'bq';
+      const requirement = option.documents[flow];
+      const label = isActivityFlow ? 'Activity Schedule' : type.label;
+      return {
+        ...type,
+        label:
+          requirement === 'required' ? label : `${label} (optional)`,
+        short: isActivityFlow ? 'AS' : type.short,
+        icon: (isActivityFlow ? 'clipboard-check' : type.icon) as IconName
+      };
     }
     return { ...type, label: `${type.label} (optional)` };
   });
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        documentsStorageKey(projectId),
-        JSON.stringify({ records })
-      );
-    } catch {
-      return;
-    }
+    saveDocuments(records, projectId);
   }, [records, projectId]);
 
   useEffect(() => {

@@ -1,4 +1,8 @@
-import { projectStorageKey } from './projectStorage';
+import {
+  STORAGE_KEYS,
+  readProjectJson,
+  writeProjectJson
+} from '../data/storage';
 
 /**
  * Data model for BK-CP03.02-FR01 Subletting Schedule Plan.
@@ -325,35 +329,17 @@ const normaliseRow = (value: unknown, index: number): SublettingScheduleRow | nu
 };
 
 export const loadScheduleRows = (projectId?: string): SublettingScheduleRow[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((value, index) => normaliseRow(value, index))
-      .filter((row): row is SublettingScheduleRow => row !== null);
-  } catch {
-    return [];
-  }
+  const parsed = readProjectJson<unknown>(STORAGE_BASE, projectId, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((value, index) => normaliseRow(value, index))
+    .filter((row): row is SublettingScheduleRow => row !== null);
 };
 
 export const saveScheduleRows = (
   rows: SublettingScheduleRow[],
   projectId?: string
-): boolean => {
-  try {
-    window.localStorage.setItem(
-      projectStorageKey(STORAGE_BASE, projectId),
-      JSON.stringify(rows)
-    );
-    return true;
-  } catch {
-    return false;
-  }
-};
+): boolean => writeProjectJson(STORAGE_BASE, projectId, rows);
 
 export interface ScheduleTotals {
   packages: number;

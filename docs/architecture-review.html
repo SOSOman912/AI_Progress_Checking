@@ -1,0 +1,1178 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>System Architecture Review — Data, Options, Tables, Modules</title>
+<style>
+  :root{
+    --ink:#0e1721; --ink-2:#26333f; --muted:#5f6f7e; --muted-2:#8a97a4;
+    --line:#dde4ec; --line-soft:#e9eef4; --bg:#f4f6f9; --card:#ffffff;
+    --accent:#1f78a8; --accent-dk:#11506f; --accent-soft:#eef6fb;
+    --ok:#1f7a43; --ok-soft:#e9f7ee; --warn:#9a640c; --warn-soft:#fff5e6;
+    --bad:#b3372f; --bad-soft:#fdeceb; --info:#4c5a67; --info-soft:#eef1f4;
+    --radius:14px; --mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    font-size:14px; line-height:1.65; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent-dk); text-decoration:none}
+  code,.mono{font-family:var(--mono); font-size:12px}
+
+  /* ---------- top bar ---------- */
+  .bar{
+    position:sticky; top:0; z-index:60; backdrop-filter:blur(10px);
+    background:rgba(255,255,255,.86); border-bottom:1px solid var(--line);
+  }
+  .bar__in{max-width:1280px; margin:0 auto; padding:10px 24px; display:flex; align-items:center; gap:14px}
+  .bar__mark{
+    width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    background:linear-gradient(150deg,var(--accent),var(--accent-dk));color:#fff;
+    font-size:11px;font-weight:800;letter-spacing:.04em;
+  }
+  .bar__title{font-size:12.5px; font-weight:700; letter-spacing:-.01em}
+  .bar__sub{font-size:11px; color:var(--muted)}
+  .bar__right{margin-left:auto; display:flex; align-items:center; gap:10px; font-size:11px; color:var(--muted)}
+  .bar__pill{border:1px solid var(--line); border-radius:999px; padding:3px 10px; background:#fff; white-space:nowrap}
+  .progress{position:absolute; left:0; bottom:-1px; height:2px; width:0; background:var(--accent); transition:width .12s linear}
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:1280px; margin:0 auto; padding:26px 24px 90px}
+  .layout{display:grid; grid-template-columns:248px minmax(0,1fr); gap:34px; align-items:start}
+  .toc{position:sticky; top:76px}
+  .toc__label{font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted-2); margin:0 0 10px 12px}
+  .toc nav{display:flex; flex-direction:column; gap:2px}
+  .toc a{
+    display:flex; gap:10px; padding:7px 12px; border-radius:8px; color:var(--muted);
+    font-size:12.5px; border-left:2px solid transparent;
+  }
+  .toc a span{font-family:var(--mono); font-size:10.5px; color:var(--muted-2); padding-top:1px}
+  .toc a:hover{background:#fff; color:var(--ink)}
+  .toc a.on{background:#fff; color:var(--accent-dk); border-left-color:var(--accent); font-weight:600; box-shadow:0 1px 2px rgba(16,30,50,.05)}
+  .toc__foot{margin-top:16px; padding:12px; border:1px dashed var(--line); border-radius:10px; font-size:11px; color:var(--muted); background:#fbfcfd}
+
+  /* ---------- hero ---------- */
+  .hero{
+    position:relative; overflow:hidden; border-radius:18px; padding:32px 34px 28px;
+    background:radial-gradient(1200px 340px at 82% -30%, #2b8fc0 0%, transparent 58%),
+               linear-gradient(150deg,#0d2230 0%,#123b52 52%,#0f2b3c 100%);
+    color:#fff; box-shadow:0 24px 60px -34px rgba(10,40,60,.75);
+  }
+  .hero::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(transparent 60%, rgba(255,255,255,.045));
+    background-size:100% 6px;
+  }
+  .hero__kicker{font-family:var(--mono); font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:#8fc4dc}
+  .hero h1{margin:10px 0 10px; font-size:33px; line-height:1.16; letter-spacing:-.03em; font-weight:700; max-width:22ch}
+  .hero p{margin:0; max-width:74ch; color:#c9dbe6; font-size:13.5px; line-height:1.7}
+  .hero__meta{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+  .hero__meta span{
+    border:1px solid rgba(255,255,255,.2); border-radius:999px; padding:4px 11px;
+    font-size:11px; color:#dceaf2; background:rgba(255,255,255,.06);
+  }
+  .hero__meta b{color:#fff; font-weight:600}
+
+  /* ---------- summary cards ---------- */
+  .kpis{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:18px 0 8px}
+  .kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px}
+  .kpi span{display:block; font-size:11px; color:var(--muted)}
+  .kpi b{display:block; margin-top:4px; font-size:24px; letter-spacing:-.03em; font-weight:600}
+  .kpi em{display:block; margin-top:2px; font-size:11px; font-style:normal; color:var(--muted-2)}
+
+  /* ---------- section ---------- */
+  .sec{margin-top:34px; scroll-margin-top:82px}
+  .sec__head{display:flex; gap:14px; align-items:flex-start; margin-bottom:14px}
+  .sec__num{
+    flex-shrink:0; width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+    background:var(--accent-soft); color:var(--accent-dk); font-family:var(--mono); font-size:12px; font-weight:700;
+    border:1px solid #d6e8f2;
+  }
+  .sec__head h2{margin:0; font-size:20px; letter-spacing:-.02em; font-weight:700}
+  .sec__head p{margin:3px 0 0; color:var(--muted); font-size:12.5px; max-width:88ch}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px 22px; margin-bottom:14px}
+  .card h3{margin:0 0 4px; font-size:14px; font-weight:700; letter-spacing:-.01em}
+  .card h3 + p{margin:0 0 14px; color:var(--muted); font-size:12px}
+  .card h4{margin:18px 0 8px; font-size:12.5px; font-weight:700; color:var(--ink-2)}
+  .card > :last-child{margin-bottom:0}
+
+  /* ---------- tables ---------- */
+  .tablewrap{overflow:auto; border:1px solid var(--line); border-radius:10px; background:#fff}
+  .tablewrap--tall{max-height:520px}
+  table.tbl{width:100%; border-collapse:separate; border-spacing:0; font-size:12px; min-width:640px}
+  table.tbl th{
+    position:sticky; top:0; z-index:2; background:#f7f9fb; text-align:left;
+    padding:9px 11px; border-bottom:1px solid var(--line); border-right:1px solid var(--line-soft);
+    font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2); font-weight:700; white-space:nowrap;
+  }
+  table.tbl th:last-child{border-right:0}
+  table.tbl td{
+    padding:9px 11px; border-bottom:1px solid var(--line-soft); border-right:1px solid var(--line-soft);
+    vertical-align:top; color:var(--ink-2);
+  }
+  table.tbl td:last-child{border-right:0}
+  table.tbl tbody tr:last-child td{border-bottom:0}
+  table.tbl tbody tr:nth-child(even) td{background:#fcfdfe}
+  table.tbl tbody tr:hover td{background:#f4f9fd}
+  table.tbl td.tight{white-space:nowrap}
+  table.tbl td.num{font-family:var(--mono); font-size:11.5px; text-align:right; white-space:nowrap}
+  table.tbl td.k{font-family:var(--mono); font-size:11.5px; color:var(--accent-dk); white-space:nowrap}
+  table.tbl td.center, table.tbl th.center{text-align:center}
+  .tbl--matrix td, .tbl--matrix th{font-size:11.5px}
+  .tbl--matrix td.center{font-size:12px}
+
+  /* ---------- badges ---------- */
+  .b{display:inline-flex; align-items:center; gap:4px; height:19px; padding:0 7px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.02em; white-space:nowrap}
+  .b.ok{background:var(--ok-soft); color:var(--ok)}
+  .b.warn{background:var(--warn-soft); color:var(--warn)}
+  .b.bad{background:var(--bad-soft); color:var(--bad)}
+  .b.info{background:var(--info-soft); color:var(--info)}
+  .b.blue{background:var(--accent-soft); color:var(--accent-dk)}
+  .dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:1px}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)} .dot.info{background:var(--muted-2)}
+
+  /* ---------- callout ---------- */
+  .note{border-left:3px solid var(--accent); background:#f8fbfd; border-radius:0 8px 8px 0; padding:11px 14px; margin:12px 0; font-size:12.5px}
+  .note b{color:var(--accent-dk)}
+  .note.warn{border-left-color:var(--warn); background:#fffbf4}
+  .note.warn b{color:var(--warn)}
+  .note.bad{border-left-color:var(--bad); background:#fdf5f4}
+  .note.bad b{color:var(--bad)}
+  .note.ok{border-left-color:var(--ok); background:#f5fbf7}
+  .note.ok b{color:var(--ok)}
+
+  /* ---------- layers diagram ---------- */
+  .layers{display:grid; gap:10px}
+  .layer{border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#fbfcfd}
+  .layer__head{display:flex; align-items:center; gap:8px; margin-bottom:8px}
+  .layer__head b{font-size:12px}
+  .layer__head span{font-size:10.5px; color:var(--muted)}
+  .chips{display:flex; flex-wrap:wrap; gap:6px}
+  .chip{font-family:var(--mono); font-size:10.5px; padding:3px 8px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--ink-2)}
+  .chip.g{border-color:#cfe3f1; background:var(--accent-soft); color:var(--accent-dk)}
+  .chip.p{border-color:#d6e8dc; background:var(--ok-soft); color:var(--ok)}
+  .chip.s{border-color:#f0dfc2; background:var(--warn-soft); color:var(--warn)}
+
+  /* ---------- module cards ---------- */
+  .mods{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+  .mod{border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:#fff}
+  .mod__top{display:flex; align-items:center; gap:8px; margin-bottom:6px}
+  .mod__top b{font-size:12.5px}
+  .mod ul{margin:8px 0 0; padding-left:16px; font-size:11.5px; color:var(--muted); line-height:1.7}
+  .mod ul li::marker{color:var(--muted-2)}
+  .mod ul b{color:var(--ink-2); font-weight:600}
+
+  /* ---------- footer ---------- */
+  .foot{margin-top:38px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted-2); font-size:11px; display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between}
+  .legend{display:flex; flex-wrap:wrap; gap:14px; font-size:11px; color:var(--muted); margin:0 0 12px}
+
+  @media (max-width:1080px){
+    .layout{grid-template-columns:1fr}
+    .toc{position:static; order:2; margin-top:20px}
+    .toc nav{flex-direction:row; flex-wrap:wrap}
+    .toc a{border-left:0; border-bottom:2px solid transparent}
+    .toc a.on{border-left:0; border-bottom-color:var(--accent)}
+    .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .mods{grid-template-columns:1fr}
+    .hero h1{font-size:26px}
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="bar__in">
+    <div class="bar__mark">APC</div>
+    <div>
+      <div class="bar__title">System Architecture Review</div>
+      <div class="bar__sub">Data storage · NEC options · Table formats · Module independence</div>
+    </div>
+    <div class="bar__right">
+      <span class="bar__pill">Read-only analysis</span>
+      <span class="bar__pill mono">main @ 407949c</span>
+    </div>
+  </div>
+  <div class="progress" id="progress"></div>
+</div>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="toc">
+    <p class="toc__label">Contents</p>
+    <nav id="toc">
+      <a href="#s0"><span>00</span>摘要與結論</a>
+      <a href="#s1"><span>01</span>資料存放與隔離</a>
+      <a href="#s2"><span>02</span>Option × Module 顯示</a>
+      <a href="#s3"><span>03</span>Table 格式對齊</a>
+      <a href="#s4"><span>04</span>模組獨立性</a>
+      <a href="#s5"><span>05</span>風險與建議</a>
+      <a href="#s6"><span>06</span>附錄：檔案地圖</a>
+    </nav>
+    <div class="toc__foot">
+      本頁只描述<b>現況</b>，未包含任何程式修改。所有結論來自 <span class="mono">src/</span> 內的實際 import 與 localStorage 讀寫。
+    </div>
+  </aside>
+
+  <main>
+
+    <!-- ================= HERO ================= -->
+    <section class="hero">
+      <div class="hero__kicker">Architecture audit · no code changes</div>
+      <h1>現有系統架構的四個關鍵問題</h1>
+      <p>
+        整份系統目前是「每個 module 自己讀寫 localStorage」的架構，沒有中央資料庫、沒有共用 service layer。
+        NEC Option 只是 Project 上的一個欄位，並沒有成為資料分區（namespace）。以下逐項交代資料存放方式、
+        每個 Option 在每個 Module 顯示什麼、Table 格式是否真的跟 Option 對齊，以及 Module 之間是否偷偷互相取數。
+      </p>
+      <div class="hero__meta">
+        <span>專案：<b>ai-progress-checking / studio</b></span>
+        <span>儲存層：<b>localStorage（無 DB / 無 API）</b></span>
+        <span>模組：<b>5 個主模組 + 3 個內嵌工作區</b></span>
+        <span>選項：<b>NEC A–F</b></span>
+        <span>日期：<b>26 Nov 2026</b></span>
+      </div>
+    </section>
+
+    <!-- ================= 00 SUMMARY ================= -->
+    <section class="sec" id="s0">
+      <div class="sec__head">
+        <div class="sec__num">00</div>
+        <div>
+          <h2>摘要與結論</h2>
+          <p>先看整體判斷，再看後面的證據。</p>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><span>localStorage key（專案級）</span><b>12</b><em>另有 3 個全域 key</em></div>
+        <div class="kpi"><span>真正按 Option 分支的檔案</span><b>4</b><em>FlowTabs / DocMgmt / CE / BimMapping</em></div>
+        <div class="kpi"><span>跨模組直接讀別人 key</span><b>4 處</b><em>documents · bq-map · ce-links · scan-assets</em></div>
+        <div class="kpi"><span>仍靠硬編 demo 資料</span><b>6 個常數</b><em>AS / BQ / CE / elements…</em></div>
+      </div>
+
+      <div class="card">
+        <div class="note ok" style="margin-top:0">
+          <b>更新（26 Nov 2026）：</b>P0-1（CE 單一金額來源）、P0-2（中央資料層）、P0-3（單一 NEC Option 定義）已完成修復，
+          詳見 <a href="#s5">05 節</a>。以下內容保留為修復前的診斷紀錄。
+        </div>
+        <h3>五個最重要的判斷</h3>
+        <div class="note bad">
+          <b>1. 資料隔離只有一個維度：projectId。</b>
+          Option 存在 <span class="mono">apc.projects.v1</span> 的 <span class="mono">necOption</span> 欄位，但所有資料 key 都只是
+          <span class="mono">&lt;base&gt;:&lt;projectId&gt;</span>。同一 project 內無法同時保留 Option A 與 Option C 的資料；
+          要比較兩個 Option 只能開兩個 project。
+        </div>
+        <div class="note bad">
+          <b>2. 沒有中央資料庫，Modules 直接讀 localStorage。</b>
+          12 個專案級 key 由 9 個檔案各自讀寫，沒有 repository / store / context 統一入口；
+          其中 4 處是「A 模組直接解析 B 模組的 private key」。
+        </div>
+        <div class="note warn">
+          <b>3. Option 只影響「顯示哪些 tab」，不影響「資料結構」。</b>
+          真正 branch 的只有 FlowTabs（A/C 顯示 AS）、DocumentManagement、CompensationEventPage（CE 連結目標）、
+          BimMapping（主文件是 AS 還是 BQ）。Table 欄位完全沒有按 Option 改變。
+        </div>
+        <div class="note warn">
+          <b>4. Table 格式是由「Flow（BQ / AS）」與「Pricing mode」決定，不是由 Option 決定。</b>
+          A 與 B 用的是同一張 <span class="mono">BqTable</span>；Option E / F 的專屬欄位（cost records、target cost）不存在。
+        </div>
+        <div class="note">
+          <b>5. 模組可以獨立 build / 獨立開頁，但不可以獨立運作資料。</b>
+          Measurement Library 是唯一真正獨立的模組；Mapping Model、Cost result、CE、Subletting 都依賴別人的資料或 demo 常數。
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 01 STORAGE ================= -->
+    <section class="sec" id="s1">
+      <div class="sec__head">
+        <div class="sec__num">01</div>
+        <div>
+          <h2>資料存放方式，以及不同 Option / Project 如何分開</h2>
+          <p>現有儲存分成三層：全域、專案級、Scenario 級。Option 不是其中一層。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>三層儲存結構</h3>
+        <div class="layers">
+          <div class="layer">
+            <div class="layer__head"><span class="b blue">GLOBAL</span><b>全域（不屬於任何 project）</b><span>· 3 個 key</span></div>
+            <div class="chips">
+              <span class="chip g">apc.projects.v1</span>
+              <span class="chip g">apc.active-project.v1</span>
+              <span class="chip g">apc.role</span>
+            </div>
+            <p style="margin:9px 0 0;font-size:11.5px;color:var(--muted)">
+              <b>apc.projects.v1</b> 是唯一的「專案主檔」，內含 <span class="mono">id / name / number / standard / necOption</span>。
+              <b>apc.role</b> 控制 <span class="mono">canViewMoney</span>（member 角色看不到銀碼）。三個 key 都與 Option 無關。
+            </p>
+          </div>
+
+          <div class="layer">
+            <div class="layer__head"><span class="b ok">PROJECT</span><b>專案級 <span class="mono">&lt;base&gt;:&lt;projectId&gt;</span></b><span>· 12 個 key</span></div>
+            <div class="chips">
+              <span class="chip p">apc.documents.v3</span>
+              <span class="chip p">apc.ce-records.v2</span>
+              <span class="chip p">apc.ce-links.v2</span>
+              <span class="chip p">apc.bq-activity-bill-map.v2</span>
+              <span class="chip p">apc.mapping-scenarios.v2</span>
+              <span class="chip p">apc.scan-assets.v2</span>
+              <span class="chip p">apc.measurement-library.v2</span>
+              <span class="chip p">apc.subcontractors.v1</span>
+              <span class="chip p">apc.subletting-contracts.v1</span>
+              <span class="chip p">apc.subletting-schedule.v1</span>
+              <span class="chip p">apc.subletting-draft.v1.&lt;activityId&gt;</span>
+              <span class="chip p">apc.pricing-mode.v1</span>
+            </div>
+            <p style="margin:9px 0 0;font-size:11.5px;color:var(--muted)">
+              沒有專案時會落到 <span class="mono">:unassigned</span> bucket，即「未開 project 都可以有資料」，
+              之後開 project 不會自動搬過去。
+            </p>
+          </div>
+
+          <div class="layer">
+            <div class="layer__head"><span class="b warn">SCENARIO</span><b>Scenario 級（沒有 project 前綴）</b><span>· 1 個 key</span></div>
+            <div class="chips"><span class="chip s">apc.smm-materials.&lt;scenarioId&gt;</span></div>
+            <p style="margin:9px 0 0;font-size:11.5px;color:var(--muted)">
+              唯一一個<b>不按 project 分區</b>的資料 key（SMM 物料覆寫），只綁 mapping scenario id。
+              這是隔離規則的例外，也是之後要統一的地方。
+            </p>
+          </div>
+
+          <div class="layer">
+            <div class="layer__head"><span class="b info">MEMORY</span><b>記憶體常數（不入庫、不持久化）</b><span>· 6 個</span></div>
+            <div class="chips">
+              <span class="chip">demoData</span>
+              <span class="chip">ACTIVITY_ITEMS</span>
+              <span class="chip">BQ_SAMPLE_ITEMS</span>
+              <span class="chip">BQ_ITEMS</span>
+              <span class="chip">COST_CE_RECORDS</span>
+              <span class="chip">SMM_ITEMS</span>
+            </div>
+            <p style="margin:9px 0 0;font-size:11.5px;color:var(--muted)">
+              <b>demoData</b>（362 行）承載 3D model、BQ 明細、圖紙、360 全景，App 每次載入都重新建立，
+              所有 project 共用同一份，關掉瀏覽器即失去編輯。其餘常數以「頁面檔案」身分被其他模組 import。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>完整 key 清單：誰寫、誰讀、裝什麼</h3>
+        <p>「Reader」一欄指出 <b>非 owner</b> 的讀取者，即跨模組耦合點。</p>
+        <div class="tablewrap tablewrap--tall">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Scope</th>
+                <th>Owner module</th>
+                <th>內容</th>
+                <th>其他讀取者</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="k">apc.projects.v1</td><td class="tight">Global</td><td>Project Home</td>
+                <td>專案主檔，含 <span class="mono">necOption</span>、<span class="mono">standard</span></td>
+                <td class="tight">App（全站）</td>
+              </tr>
+              <tr>
+                <td class="k">apc.active-project.v1</td><td class="tight">Global</td><td>App</td>
+                <td>目前選中的 project id</td><td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.role</td><td class="tight">Global</td><td>permissions</td>
+                <td>qs / member / admin，決定可否看錢</td><td class="tight">App</td>
+              </tr>
+              <tr>
+                <td class="k">apc.documents.v3</td><td class="tight">Project</td><td>Document Management</td>
+                <td>BQ / AS / CE / Rates 檔案記錄 + Import 結果（<span class="mono">records[]</span>）</td>
+                <td class="tight"><span class="b bad">ceLinks</span> 直接解析 records</td>
+              </tr>
+              <tr>
+                <td class="k">apc.ce-records.v2</td><td class="tight">Project</td><td>CE</td>
+                <td>CE OCR 結果：fields、items、quantity、regions、原檔縮圖</td>
+                <td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.ce-links.v2</td><td class="tight">Project</td><td>CE</td>
+                <td>CE → BQ / AS 的連結（itemIds、amount、quantity）</td>
+                <td class="tight"><span class="b bad">ModelView</span> <span class="b bad">Preprocessing</span></td>
+              </tr>
+              <tr>
+                <td class="k">apc.bq-activity-bill-map.v2</td><td class="tight">Project</td><td>Preprocessing</td>
+                <td>BQ Bill No. ↔ Activity Schedule 對照</td>
+                <td class="tight"><span class="b bad">SublettingPage</span></td>
+              </tr>
+              <tr>
+                <td class="k">apc.mapping-scenarios.v2</td><td class="tight">Project</td><td>Mapping Model</td>
+                <td>Scenario 清單（sources 以「文件名稱」記錄，非 id）</td>
+                <td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.scan-assets.v2</td><td class="tight">Project</td><td>AI Scanning</td>
+                <td>IFC / 點雲上傳紀錄與狀態</td>
+                <td class="tight"><span class="b bad">Mapping Model</span></td>
+              </tr>
+              <tr>
+                <td class="k">apc.measurement-library.v2</td><td class="tight">Project</td><td>Measurement Library</td>
+                <td>SMM 量度項目列的使用者編輯</td><td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.subcontractors.v1</td><td class="tight">Project</td><td>Subletting</td>
+                <td>分包商清單（id + name）</td><td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.subletting-contracts.v1</td><td class="tight">Project</td><td>Subletting</td>
+                <td>由 Activity item 分組而成的分包合約</td><td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.subletting-schedule.v1</td><td class="tight">Project</td><td>Subletting</td>
+                <td>BK-CP03.02-FR01 分包計劃表（33 欄）</td><td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.subletting-draft.v1.&lt;activityId&gt;</td><td class="tight">Project</td><td>Subletting</td>
+                <td>未儲存的分包指派草稿</td><td class="tight">—</td>
+              </tr>
+              <tr>
+                <td class="k">apc.pricing-mode.v1</td><td class="tight">Project</td><td>pricingMode</td>
+                <td><span class="mono">priced</span> / <span class="mono">quantity-only</span></td>
+                <td class="tight">全站（經 event 廣播）</td>
+              </tr>
+              <tr>
+                <td class="k">apc.smm-materials.&lt;scenarioId&gt;</td><td class="tight">Scenario</td><td>BimMapping</td>
+                <td>每個 scenario 的物料對照覆寫</td>
+                <td class="tight"><span class="b warn">無 project 前綴</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Option / Project 的實際隔離行為</h3>
+        <div class="tablewrap">
+          <table class="tbl">
+            <thead>
+              <tr><th>問題</th><th>現況</th><th>判斷</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Option 是不是資料分區？</td>
+                <td>不是。Option 只是 project 物件的屬性，不會出現在任何 storage key。</td>
+                <td><span class="b bad">No</span></td>
+              </tr>
+              <tr>
+                <td>同一 project 可否同時有 Option A 與 C 的資料？</td>
+                <td>不可以。要並存只能建兩個 project，但兩個 project 又各自用自己的 key。</td>
+                <td><span class="b bad">No</span></td>
+              </tr>
+              <tr>
+                <td>切換 project 時資料會否混在一起？</td>
+                <td>不會（key 有 projectId）。但 3 個模組的元件用 <span class="mono">key={projectId}</span> 強制 remount，
+                    而 Mapping Model 的存檔 effect 只依賴 <span class="mono">[scenarios]</span>，切 project 後有機會寫回舊 key。</td>
+                <td><span class="b warn">Partial</span></td>
+              </tr>
+              <tr>
+                <td>Option 可否中途改？</td>
+                <td>Project Home 建立時選定；資料結構不隨 Option 改變，所以改了 Option 不會壞資料，但已存在的表格欄位也不會跟著變。</td>
+                <td><span class="b warn">Mutable</span></td>
+              </tr>
+              <tr>
+                <td>有沒有版本 / migration？</td>
+                <td>只有 key 名稱裡的 <span class="mono">.v1 / .v2 / .v3</span>，讀取時寬鬆驗證，舊版本資料不會自動升級。</td>
+                <td><span class="b warn">Key-only</span></td>
+              </tr>
+              <tr>
+                <td>多分頁 / 多使用者？</td>
+                <td>每個 tab 各自持有 state，寫入是 last-write-wins；沒有鎖、沒有衝突處理。</td>
+                <td><span class="b bad">None</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          <b>容量風險：</b>CE 原檔縮圖與 IFC 資產都存在 localStorage（一般 5–10 MB）。
+          <span class="mono">apc.ce-records.v2</span> 把 base64 JPEG 一併寫入，檔案多幾份就會 <span class="mono">QuotaExceededError</span>，而目前所有寫入都是靜默失敗。
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 02 OPTION x MODULE ================= -->
+    <section class="sec" id="s2">
+      <div class="sec__head">
+        <div class="sec__num">02</div>
+        <div>
+          <h2>不同 Option 在各 Module 顯示什麼</h2>
+          <p>整個系統只有 4 個檔案真正讀 <span class="mono">necOption</span>：FlowTabs、DocumentManagement、CompensationEventPage、BimMapping。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Option × Module 對照矩陣</h3>
+        <div class="legend">
+          <span><span class="dot ok"></span>按 Option 有明顯差異</span>
+          <span><span class="dot warn"></span>部分差異 / 有缺口</span>
+          <span><span class="dot info"></span>完全一樣</span>
+        </div>
+        <div class="tablewrap">
+          <table class="tbl tbl--matrix">
+            <thead>
+              <tr>
+                <th style="min-width:190px">Module / 工作區</th>
+                <th class="center">A</th>
+                <th class="center">B</th>
+                <th class="center">C</th>
+                <th class="center">D</th>
+                <th class="center">E</th>
+                <th class="center">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>01 Document Management</b><br><span style="color:var(--muted);font-size:11px">文件分頁</span></td>
+                <td><span class="b ok">AS → BQ → CE</span><br><span style="font-size:11px;color:var(--muted)">預設開 AS；BQ 為 reference</span></td>
+                <td><span class="b ok">BQ → CE</span><br><span style="font-size:11px;color:var(--muted)">無 AS 分頁</span></td>
+                <td><span class="b ok">AS → BQ → CE</span><br><span style="font-size:11px;color:var(--muted)">同 A</span></td>
+                <td><span class="b ok">BQ → CE</span><br><span style="font-size:11px;color:var(--muted)">同 B</span></td>
+                <td><span class="b warn">BQ → CE</span><br><span style="font-size:11px;color:var(--muted)">主文件應為 cost records，但無入口</span></td>
+                <td><span class="b warn">BQ → CE</span><br><span style="font-size:11px;color:var(--muted)">主文件應為 AS + cost，但 AS 被隱藏</span></td>
+              </tr>
+              <tr>
+                <td><b>01 · Cleanse / Preprocessing</b><br><span style="color:var(--muted);font-size:11px">結果頁表格</span></td>
+                <td><span class="b ok">AS 表 + CE Summary tab</span><br><span style="font-size:11px;color:var(--muted)">BQ reference 亦帶 CE Summary</span></td>
+                <td><span class="b info">BQ 表（無 CE Summary）</span></td>
+                <td><span class="b ok">同 A</span></td>
+                <td><span class="b info">同 B</span></td>
+                <td><span class="b info">同 B</span></td>
+                <td><span class="b warn">同 B（應有 AS）</span></td>
+              </tr>
+              <tr>
+                <td><b>01 · Subletting</b><br><span style="color:var(--muted);font-size:11px">分包 + BK 計劃表</span></td>
+                <td><span class="b ok">顯示（Sub-Contractor 導航）</span></td>
+                <td><span class="b info">隱藏</span></td>
+                <td><span class="b ok">顯示</span></td>
+                <td><span class="b info">隱藏</span></td>
+                <td><span class="b info">隱藏</span></td>
+                <td><span class="b info">隱藏</span></td>
+              </tr>
+              <tr>
+                <td><b>02 Measurement Library</b><br><span style="color:var(--muted);font-size:11px">SMM 量度規則</span></td>
+                <td colspan="6" class="center"><span class="b info">六個 Option 完全相同</span>　靜態 <span class="mono">SMM_ITEMS</span> + 專案級編輯</td>
+              </tr>
+              <tr>
+                <td><b>03 AI Scanning</b><br><span style="color:var(--muted);font-size:11px">IFC / 掃描</span></td>
+                <td colspan="6" class="center"><span class="b info">六個 Option 完全相同</span>　只用 <span class="mono">scan-assets</span> + demo elements</td>
+              </tr>
+              <tr>
+                <td><b>04 Mapping Model</b><br><span style="color:var(--muted);font-size:11px">建 scenario</span></td>
+                <td><span class="b ok">主文件 = Activity Schedule</span></td>
+                <td><span class="b ok">主文件 = BQ</span></td>
+                <td><span class="b ok">主文件 = Activity Schedule</span></td>
+                <td><span class="b ok">主文件 = BQ</span></td>
+                <td><span class="b warn">主文件 = 任意 quantity source</span></td>
+                <td><span class="b warn">主文件 = 任意 quantity source</span></td>
+              </tr>
+              <tr>
+                <td><b>04 · Cost result</b><br><span style="color:var(--muted);font-size:11px">成本結果頁</span></td>
+                <td colspan="6" class="center">
+                  <span class="b warn">六個 Option 同一個畫面</span>
+                  <br><span style="font-size:11px;color:var(--muted)">顯示哪些 tab 由 scenario 的 sources 決定，不由 Option 決定</span>
+                </td>
+              </tr>
+              <tr>
+                <td><b>05 eCheck Payment</b></td>
+                <td colspan="6" class="center"><span class="b bad">Placeholder</span>　所有 Option 都未實作</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>每個 Option 的實際體驗</h3>
+        <div class="mods">
+          <div class="mod">
+            <div class="mod__top"><span class="b ok">A</span><b>Priced · Activity Schedule</b></div>
+            <ul>
+              <li>Document Management 預設落在 <b>Activity Schedule</b>，BQ 變成 reference</li>
+              <li>BQ reference 仍可打開 <b>CE Summary</b>（sampleBq 模式）</li>
+              <li>CE 連結目標 = Activity items，Subletting 分頁出現</li>
+              <li>Mapping 要求先選 AS 作主定價文件</li>
+            </ul>
+          </div>
+          <div class="mod">
+            <div class="mod__top"><span class="b ok">B</span><b>Priced · Bill of Quantities</b></div>
+            <ul>
+              <li>只有 <b>BQ / CE</b> 兩個分頁，沒有 AS</li>
+              <li>CE 連結目標 = BQ items</li>
+              <li>Subletting 完全不可達（雖然 BQ 一樣可以分包）</li>
+              <li>Mapping 主文件 = BQ</li>
+            </ul>
+          </div>
+          <div class="mod">
+            <div class="mod__top"><span class="b warn">C</span><b>Target cost · Activity Schedule</b></div>
+            <ul>
+              <li>畫面與 <b>Option A 完全一樣</b></li>
+              <li>沒有 target cost、pain/gain share、target price 任何欄位或頁面</li>
+              <li>差異只在 Project Home 顯示的名稱</li>
+            </ul>
+          </div>
+          <div class="mod">
+            <div class="mod__top"><span class="b warn">D</span><b>Target cost · BQ</b></div>
+            <ul>
+              <li>畫面與 <b>Option B 完全一樣</b></li>
+              <li>同上：沒有 target cost 專屬畫面</li>
+            </ul>
+          </div>
+          <div class="mod">
+            <div class="mod__top"><span class="b bad">E</span><b>Cost reimbursable</b></div>
+            <ul>
+              <li>實際主文件是 cost records / invoices，但 Document Management 仍顯示 <b>BQ + CE</b></li>
+              <li>沒有 invoices 分頁（Invoice / DN 仍是 placeholder）</li>
+              <li>Mapping 的「主定價文件」退化為「任何提供數量的來源」</li>
+            </ul>
+          </div>
+          <div class="mod">
+            <div class="mod__top"><span class="b bad">F</span><b>Management contract</b></div>
+            <ul>
+              <li>官方定義是 AS + cost records，但 <b>AS 分頁被隱藏</b></li>
+              <li>CE / Mapping 行為與 E 相同</li>
+              <li>沒有任何 management contract 專屬功能</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="note bad">
+          <b>兩套 Option 定義並存：</b>
+          <span class="mono">src/lib/projects.ts</span> 的 <span class="mono">NEC_OPTION_INFO</span>（UI 在用）與
+          <span class="mono">src/lib/costPlans.ts</span> 的 <span class="mono">NEC_OPTIONS + COST_DOC_MATRIX</span>（定義了每個 Option
+          需要哪些文件，但 <b>沒有任何 view import 它</b>）。後者才是「Option 對應文件」的規則，卻沒有生效。
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 03 TABLE FORMAT ================= -->
+    <section class="sec" id="s3">
+      <div class="sec__head">
+        <div class="sec__num">03</div>
+        <div>
+          <h2>Table 格式是否對齊 Option？</h2>
+          <p>結論：對齊的是「Flow」與「Pricing mode」，不是 Option。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>各 Table 的欄位由什麼決定</h3>
+        <div class="tablewrap tablewrap--tall">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Table</th>
+                <th>欄位</th>
+                <th>由什麼決定欄位</th>
+                <th>對齊 Option？</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>BqTable</b><br><span style="font-size:11px;color:var(--muted)">AS / BQ 共用</span></td>
+                <td class="mono" style="font-size:11px">Item · Description · Unit · Qty · Qty (BIM) · Rate · Amount · Amount (BIM) · CE · Final Amount</td>
+                <td><span class="mono">showCe</span>（A/C）<br><span class="mono">showMoney</span>（pricing mode + 角色）</td>
+                <td><span class="b warn">部分</span><br><span style="font-size:11px;color:var(--muted)">只有 CE 欄與 Option 有關</span></td>
+              </tr>
+              <tr>
+                <td><b>Cleanse / Preprocessing</b></td>
+                <td>同上 + Schedule / Bill 分段列</td>
+                <td><span class="mono">isActivity</span>、<span class="mono">mappingMode</span>、<span class="mono">sampleBq</span></td>
+                <td><span class="b warn">部分</span></td>
+              </tr>
+              <tr>
+                <td><b>CE Summary</b></td>
+                <td>CE No. · Description · Date · Reference · Items · Net Amount</td>
+                <td>只在 AS 或 A/C 的 BQ reference 出現</td>
+                <td><span class="b ok">與 A/C 綁定</span></td>
+              </tr>
+              <tr>
+                <td><b>CE 抽取明細</b></td>
+                <td>Description · Unit · Qty · (Rate · Amount)</td>
+                <td>pricing mode</td>
+                <td><span class="b info">與 Option 無關</span></td>
+              </tr>
+              <tr>
+                <td><b>CE Home table</b></td>
+                <td>文件 · CE No. · Qty · (Amount) · Received · Status</td>
+                <td>pricing mode</td>
+                <td><span class="b info">與 Option 無關</span></td>
+              </tr>
+              <tr>
+                <td><b>Subletting builder</b></td>
+                <td>Item · Description · Unit · Qty · (Value) · Status · Subcontractor</td>
+                <td>pricing mode；資料固定取 Activity items</td>
+                <td><span class="b bad">No</span><br><span style="font-size:11px;color:var(--muted)">BQ 分包沒有對應格式</span></td>
+              </tr>
+              <tr>
+                <td><b>Subletting schedule</b></td>
+                <td class="mono" style="font-size:11px">BK-CP03.02-FR01 · 33 欄（Tender Budget → LOA → Work Order）</td>
+                <td>固定模板；pricing mode 只隱藏銀碼欄</td>
+                <td><span class="b bad">No</span><br><span style="font-size:11px;color:var(--muted)">表單本身就是合約文件，與 Option 無關</span></td>
+              </tr>
+              <tr>
+                <td><b>Cost result</b></td>
+                <td>三種：BQ（Item/Qty/Rate/Amount/CE）、Activity（+Value/CE）、Records（Invoice/Amount）</td>
+                <td>scenario.sources 決定 tab；pricing mode 決定銀碼欄</td>
+                <td><span class="b bad">No</span><br><span style="font-size:11px;color:var(--muted)">C/D 應有 target cost，實際無</span></td>
+              </tr>
+              <tr>
+                <td><b>Measurement Library</b></td>
+                <td>量度項目 · 單位 · 計算規則 · 對應構件</td>
+                <td>靜態 SMM 定義</td>
+                <td><span class="b info">與 Option 無關</span></td>
+              </tr>
+              <tr>
+                <td><b>Mapping element 表</b></td>
+                <td>Element · Material · Qty · (Rate) · 對應 BQ/AS 行</td>
+                <td>scenario 來源；pricing mode</td>
+                <td><span class="b warn">間接</span><br><span style="font-size:11px;color:var(--muted)">主文件標籤跟 Option</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>三個具體的錯位</h3>
+        <div class="note bad">
+          <b>1. Option E / F 仍在用「BQ 為主」的表格。</b>
+          E 是 cost reimbursable，理論上主表應該是 invoice / actual cost；F 是 management contract，主表應該是 AS + cost。
+          但兩者現在都只看到 BQ 表，而且 FlowTabs 的排序邏輯寫死為 <span class="mono">activityMain ? [AS,BQ,CE] : [BQ,CE]</span>。
+        </div>
+        <div class="note bad">
+          <b>2. Option C / D 沒有任何 target cost 欄位。</b>
+          Target cost 的 pain/gain、target price、defined cost 在表格中完全缺席；
+          C 與 A 的畫面逐格相同，D 與 B 亦相同。
+        </div>
+        <div class="note warn">
+          <b>3. AS 表帶着 BQ 的欄位。</b>
+          AS 表同樣有 <span class="mono">Qty (BIM)</span>、<span class="mono">Amount (BIM)</span>、<span class="mono">Final Amount</span>，
+          這些是 BQ / 量差比較的概念；Activity Schedule 真正需要的是 schedule 分組、完成百分比、CE 對應，目前只有 schedule 分段。
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 04 MODULE INDEPENDENCE ================= -->
+    <section class="sec" id="s4">
+      <div class="sec__head">
+        <div class="sec__num">04</div>
+        <div>
+          <h2>Module 是否可以獨立運作？有沒有跨模組取數？</h2>
+          <p>以下為<b>修復前</b>的診斷；P0-2 修復後，所有跨模組讀取已改經 <span class="mono">src/data/*</span>，現況見 05 節。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>跨模組資料依賴矩陣（Consumer → Source）</h3>
+        <p>「直接讀 key」＝ 沒有經過任何 API，直接 parse 別人的 localStorage；「import 常數」＝ 直接 import 另一個頁面檔案的 hard-code 陣列。</p>
+        <div class="tablewrap">
+          <table class="tbl tbl--matrix">
+            <thead>
+              <tr>
+                <th style="min-width:160px">Consumer ＼ Source</th>
+                <th class="center">Doc&nbsp;Mgmt</th>
+                <th class="center">CE</th>
+                <th class="center">Preprocess</th>
+                <th class="center">Scanning</th>
+                <th class="center">Mapping</th>
+                <th class="center">demo.ts</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>Document Management</b></td>
+                <td class="center"><span class="b info">owner</span></td>
+                <td class="center"><span class="b bad">讀 ce-links</span></td>
+                <td class="center"><span class="b warn">render 子頁</span></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center"><span class="b warn">demoData</span></td>
+              </tr>
+              <tr>
+                <td><b>Preprocessing / Cleanse</b></td>
+                <td class="center"><span class="b bad">讀 documents</span></td>
+                <td class="center"><span class="b bad">讀 ce-links</span></td>
+                <td class="center"><span class="b info">owner</span></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center"><span class="b bad">AS/BQ 常數</span></td>
+              </tr>
+              <tr>
+                <td><b>Compensation Event</b></td>
+                <td class="center"><span class="b bad">讀 documents</span></td>
+                <td class="center"><span class="b info">owner</span></td>
+                <td class="center"><span class="b bad">import ACTIVITY_ITEMS</span></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center"><span class="b bad">BQ_ITEMS</span></td>
+              </tr>
+              <tr>
+                <td><b>Subletting</b></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center"><span class="b bad">讀 bq-activity-map<br>+ import ACTIVITY_ITEMS</span></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+              </tr>
+              <tr>
+                <td><b>Mapping Model</b></td>
+                <td class="center">—</td>
+                <td class="center"><span class="b bad">讀 ce-links</span></td>
+                <td class="center">—</td>
+                <td class="center"><span class="b bad">讀 scan-assets</span></td>
+                <td class="center"><span class="b info">owner</span></td>
+                <td class="center"><span class="b bad">demoData</span></td>
+              </tr>
+              <tr>
+                <td><b>Cost result</b></td>
+                <td class="center">—</td>
+                <td class="center"><span class="b bad">用 COST_CE_RECORDS<br>（常數，非 CE 資料）</span></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center"><span class="b warn">scenario 傳入</span></td>
+                <td class="center"><span class="b bad">demoData</span></td>
+              </tr>
+              <tr>
+                <td><b>AI Scanning</b></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center"><span class="b info">owner</span></td>
+                <td class="center"><span class="b warn">render MappingResult</span></td>
+                <td class="center"><span class="b bad">demoData</span></td>
+              </tr>
+              <tr>
+                <td><b>Measurement Library</b></td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+                <td class="center">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>逐個模組的獨立性判定</h3>
+        <div class="mods">
+          <div class="mod">
+            <div class="mod__top"><span class="b ok">獨立</span><b>02 Measurement Library</b></div>
+            <ul>
+              <li>只 import <span class="mono">projectStorageKey</span> + 自己的 <span class="mono">measurementLibrary.ts</span></li>
+              <li>不讀任何其他模組資料，也沒有跨頁 import</li>
+              <li><b>唯一</b>可以抽出來單獨使用的模組</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b warn">半獨立</span><b>03 AI Scanning</b></div>
+            <ul>
+              <li>自己的 <span class="mono">scan-assets</span> 是專案級、格式完整</li>
+              <li>但結果頁直接 render <span class="mono">MappingResult</span>（import 自 BimMapping）</li>
+              <li>構件資料來自 <b>demoData</b>，不是上傳的 IFC 內容</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b warn">半獨立</span><b>01 Document Management</b></div>
+            <ul>
+              <li>自己是 documents 的 owner，但表格實作放在 <span class="mono">Preprocessing.tsx</span></li>
+              <li><span class="mono">ACTIVITY_ITEMS</span> / <span class="mono">BQ_SAMPLE_ITEMS</span> 由頁面檔 export，被 CE / Subletting 當資料模組用</li>
+              <li>CE 欄位靠 <span class="mono">ce-links</span> 與 line.ce，兩者來源不同</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b bad">不獨立</span><b>04 Mapping Model</b></div>
+            <ul>
+              <li>依賴 <span class="mono">scan-assets</span>（AI Scanning 的 key）</li>
+              <li>依賴 <span class="mono">ce-links</span>（CE 的 key）做 CE 標記</li>
+              <li>scenario.sources 只存「文件名稱」字串，<b>不是 document id</b>，無法 join 回真實文件</li>
+              <li>構件與 BQ 明細來自 demoData</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b warn">已修復</span><b>04 · Cost result</b></div>
+            <ul>
+              <li>CE 金額改由 <span class="mono">data/ce.loadCeLinks()</span> 提供，與 CE 模組同一來源</li>
+              <li>CE 模組新增 / 改金額，Cost result 會即時反映</li>
+              <li>BQ / Activity 數字仍來自 demoData（P1）</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b warn">已修復</span><b>01 · CE</b></div>
+            <ul>
+              <li>連結目標改由 <span class="mono">data/documents.loadDocumentOptions()</span> 提供，不再自行 parse key</li>
+              <li>CE 金額寫入 link 時改為 <span class="mono">ceRecordAmount(record)</span></li>
+              <li>item 選項仍用 <span class="mono">ACTIVITY_ITEMS</span> / <span class="mono">BQ_ITEMS</span> 常數（P1）</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b bad">不獨立</span><b>01 · Subletting</b></div>
+            <ul>
+              <li>讀 Preprocessing 的 <span class="mono">bq-activity-bill-map</span></li>
+              <li>Activity items 來自 <span class="mono">ACTIVITY_ITEMS</span> 常數</li>
+              <li>合約金額由常數 rate × qty 計算，與 BQ 匯入結果無關</li>
+            </ul>
+          </div>
+
+          <div class="mod">
+            <div class="mod__top"><span class="b bad">未實作</span><b>05 eCheck Payment</b></div>
+            <ul>
+              <li>目前是 <span class="mono">PageStub</span>，沒有任何資料</li>
+              <li>Invoice / DN 分頁同為 placeholder</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="note ok">
+          <b>最嚴重的一條（已修復）：</b>原本 CE 模組寫入的金額、BQ / AS 表顯示的 CE、Cost result 的 CE 是<b>三套數字</b>。
+          現在三者都來自 <span class="mono">apc.ce-links.v2</span>，經 <span class="mono">data/ce</span> 的
+          <span class="mono">ceAmountByItem</span> / <span class="mono">loadCeLinks</span> 統一計算。
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 05 RISKS ================= -->
+    <section class="sec" id="s5">
+      <div class="sec__head">
+        <div class="sec__num">05</div>
+        <div>
+          <h2>風險與建議（依優先次序）</h2>
+          <p>只列結構性問題，不涉及 UI 細節。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>P0 修復狀態</h3>
+        <div class="tablewrap">
+          <table class="tbl">
+            <thead>
+              <tr><th style="width:44px">#</th><th>問題</th><th>修復內容</th><th class="center">狀態</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="num">P0-1</td>
+                <td>CE 金額三個來源</td>
+                <td>
+                  新增 <span class="mono">src/data/ce.ts</span> 作為唯一 CE 金額來源：
+                  <span class="mono">ceAmountByItem</span> / <span class="mono">loadCeLinks</span> / <span class="mono">ceRecordAmount</span>。
+                  Cost result 不再使用 <span class="mono">COST_CE_RECORDS</span> 常數（已刪除），改為
+                  <span class="mono">buildCostResult(scenario, ceLinks, selectedCe)</span>；
+                  CE 寫入 link 時的 <span class="mono">amount: 128500</span> 改為由 OCR 結果計算。
+                  BQ / AS 表的 CE 欄、ModelView、CE Summary 全部經同一組 links 計算。
+                </td>
+                <td class="center"><span class="b ok">完成</span></td>
+              </tr>
+              <tr>
+                <td class="num">P0-2</td>
+                <td>沒有中央資料層，跨模組讀 key</td>
+                <td>
+                  新增 <span class="mono">src/data/</span>：<span class="mono">storage</span>（唯一接觸 localStorage）、
+                  <span class="mono">documents</span>、<span class="mono">ce</span>、<span class="mono">bqActivityMap</span>、
+                  <span class="mono">subletting</span>、<span class="mono">measurement</span>、<span class="mono">smm</span>。
+                  所有 <span class="mono">src/views</span> 與 <span class="mono">src/lib</span> 已無直接 localStorage 呼叫；
+                  key 名集中在 <span class="mono">STORAGE_KEYS</span>。原本 4 處跨模組 parse 全部改走 repository。
+                </td>
+                <td class="center"><span class="b ok">完成</span></td>
+              </tr>
+              <tr>
+                <td class="num">P0-3</td>
+                <td>Option 不是資料分區 / 兩套定義</td>
+                <td>
+                  <span class="mono">projects.ts</span> 的 <span class="mono">NEC_OPTION_INFO</span> 擴充為單一能力表
+                  （flows、activitySchedule、bqReference、subletting、ceTarget、documents 矩陣）；
+                  <span class="mono">costPlans.ts</span> 改為由它衍生，不再有第二套 data。
+                  FlowTabs / DocumentManagement / CompensationEventPage / BimMapping / costResult 全部由
+                  <span class="mono">optionInfo()</span> 驅動，程式內再無 <span class="mono">'A' || 'C'</span> 判斷。
+                </td>
+                <td class="center"><span class="b ok">完成</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note warn">
+          <b>仍然存在（P1，未處理）：</b>Option 依然不是資料分區（同一 project 不能並存兩個 Option 的資料）；
+          Option E / F 的專屬畫面（invoices、cost records）仍未實作；demo 資料仍未持久化。
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>其餘風險（P1 / P2）</h3>
+        <div class="tablewrap">
+          <table class="tbl">
+            <thead>
+              <tr><th style="width:44px">#</th><th>問題</th><th>影響</th><th>建議方向</th><th class="center">優先</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="num">4</td>
+                <td>Table 欄位寫死在元件內，不隨 Option 變</td>
+                <td>E / F / C / D 沒有專屬欄位；新增 Option 要改多個檔案</td>
+                <td>改為 column schema：<span class="mono">columnsFor(option, flow, pricingMode)</span></td>
+                <td class="center"><span class="b warn">P1</span></td>
+              </tr>
+              <tr>
+                <td class="num">5</td>
+                <td>demoData 不持久化，所有 project 共用</td>
+                <td>3D model / BQ 明細的編輯一 reload 即消失；不同 project 看到同一份資料</td>
+                <td>把 demo 資料降級為「建立 project 時的 seed」，寫入專案級 key</td>
+                <td class="center"><span class="b warn">P1</span></td>
+              </tr>
+              <tr>
+                <td class="num">6</td>
+                <td>scenario.sources 存文件名稱而非 id</td>
+                <td>文件改名 / 重匯後 scenario 對不上，CE / cost 無法回溯</td>
+                <td>改存 <span class="mono">{docId, name}</span>，顯示時再解析名稱</td>
+                <td class="center"><span class="b warn">P1</span></td>
+              </tr>
+              <tr>
+                <td class="num">7</td>
+                <td>localStorage 存 base64 圖（CE 原檔）與 IFC 資產</td>
+                <td>5–10 MB 上限，寫入失敗被靜默吞掉</td>
+                <td>圖片 / IFC 改存 IndexedDB（或物件儲存），只留縮圖 / metadata</td>
+                <td class="center"><span class="b warn">P1</span></td>
+              </tr>
+              <tr>
+                <td class="num">8</td>
+                <td><span class="mono">apc.smm-materials.&lt;scenarioId&gt;</span> 沒有 project 前綴</td>
+                <td>唯一破壞隔離規則的 key，無法按 project 清理</td>
+                <td>加 project 前綴，與其他 key 一致</td>
+                <td class="center"><span class="b info">P2</span></td>
+              </tr>
+              <tr>
+                <td class="num">9</td>
+                <td><span class="mono">saveMappingScenarios</span> effect 缺 projectId 依賴</td>
+                <td>切換 project 後可能把資料寫回上一個 key</td>
+                <td>加 <span class="mono">projectId</span> 到 dependency array</td>
+                <td class="center"><span class="b info">P2</span></td>
+              </tr>
+              <tr>
+                <td class="num">10</td>
+                <td>沒有 schema 版本 / migration</td>
+                <td>舊資料靠寬鬆驗證硬讀，欄位一改就靜默丟資料</td>
+                <td>每個 key 加 <span class="mono">{version, data}</span> 外殼與 migrate 函式</td>
+                <td class="center"><span class="b info">P2</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>建議的目標架構（方向，不是實作）</h3>
+        <div class="note ok">
+          <b>三層切開：</b>
+          <b>① Option 能力表</b>（單一 <span class="mono">NEC_OPTION_INFO</span>：主文件、必需文件、可用 module、table schema）→
+          <b>② Data repository</b>（每個 domain 一個 module，統一 key、版本、join）→
+          <b>③ View</b>（只收 props，不碰 localStorage）。
+          這樣 Option 就由「一個顯示開關」變成「驅動資料與欄位的設定」，而 module 之間的耦合只會出現在 repository 層。
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 06 APPENDIX ================= -->
+    <section class="sec" id="s6">
+      <div class="sec__head">
+        <div class="sec__num">06</div>
+        <div>
+          <h2>附錄：檔案地圖與證據位置</h2>
+          <p>要追查任何一條結論，可以由這裡開始。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="tablewrap tablewrap--tall">
+          <table class="tbl">
+            <thead>
+              <tr><th>檔案</th><th>角色</th><th>關鍵位置</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="k">src/App.tsx</td><td>路由、active project、權限、pricing mode 注入</td><td><span class="mono">withMoneyPermission(demoData)</span> · <span class="mono">showMoney</span></td></tr>
+              <tr><td class="k">src/lib/projects.ts</td><td>Project 主檔 + <span class="mono">NEC_OPTION_INFO</span></td><td><span class="mono">necOption</span> 存放位置</td></tr>
+              <tr><td class="k">src/lib/costPlans.ts</td><td>第二套 Option 定義 + 文件矩陣</td><td><span class="mono">COST_DOC_MATRIX</span>（未被 import）</td></tr>
+              <tr><td class="k">src/lib/projectStorage.ts</td><td>唯一的 key 命名規則</td><td><span class="mono">projectStorageKey(base, projectId)</span></td></tr>
+              <tr><td class="k">src/lib/pricingMode.ts</td><td>priced / quantity-only</td><td><span class="mono">apc.pricing-mode.v1</span> + event</td></tr>
+              <tr><td class="k">src/lib/ceLinks.ts</td><td>CE ↔ BQ/AS 連結、pricing options</td><td><span class="mono">loadPricingOptions</span> 讀 documents；<span class="mono">BQ_ITEMS</span> 來自 demoData</td></tr>
+              <tr><td class="k">src/views/Preprocessing.tsx</td><td>BQ/AS 表、Cleanse、CE Summary、常數來源</td><td><span class="mono">ACTIVITY_ITEMS</span> · <span class="mono">BQ_SAMPLE_ITEMS</span> · <span class="mono">linksForActivity/linksForBq</span></td></tr>
+              <tr><td class="k">src/components/BqPanels.tsx</td><td>共用 BqTable（欄位順序、整數格式化）</td><td><span class="mono">baseCols</span> / <span class="mono">showCe</span> / <span class="mono">showMoney</span></td></tr>
+              <tr><td class="k">src/views/CompensationEventPage.tsx</td><td>CE 匯入、OCR 結果、連結</td><td><span class="mono">apc.ce-records.v2</span> · <span class="mono">amount: 128500</span></td></tr>
+              <tr><td class="k">src/views/SublettingPage.tsx</td><td>分包合約 + BK 計劃表</td><td><span class="mono">BQ_MAPPING_BASE</span> 跨模組讀取</td></tr>
+              <tr><td class="k">src/views/BimMapping.tsx</td><td>Mapping Model、SMM、Cost 入口</td><td><span class="mono">apc.smm-materials.&lt;scenarioId&gt;</span> · <span class="mono">mainDoc</span></td></tr>
+              <tr><td class="k">src/views/CostResultPage.tsx</td><td>成本結果</td><td><span class="mono">COST_CE_RECORDS</span>（常數）</td></tr>
+              <tr><td class="k">src/lib/demo.ts</td><td>全域 demo 資料（3D / BQ / 圖紙）</td><td><span class="mono">demoData</span>（362 行，不持久化）</td></tr>
+              <tr><td class="k">src/lib/mappingScenarios.ts</td><td>Scenario 儲存</td><td><span class="mono">sources</span> 用文件名稱字串</td></tr>
+              <tr><td class="k">src/lib/scanAssets.ts</td><td>IFC / 點雲資產</td><td><span class="mono">apc.scan-assets.v2</span></td></tr>
+              <tr><td class="k">src/lib/permissions.ts</td><td>角色與銀碼可見性</td><td><span class="mono">apc.role</span> · <span class="mono">canViewMoney</span></td></tr>
+              <tr><td class="k">src/lib/numberFormat.ts</td><td>BQ/AS 整數規則</td><td><span class="mono">roundBq</span> / <span class="mono">formatBqQty</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note">
+          <b>分析方法：</b>靜態掃描 <span class="mono">src/</span> 內所有 <span class="mono">localStorage</span> 呼叫、<span class="mono">projectStorageKey</span> 使用點、
+          <span class="mono">necOption</span> 分支，以及 view 之間的 import 關係；沒有執行任何資料寫入。
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span>System Architecture Review · read-only snapshot of <span class="mono">main @ 407949c</span></span>
+      <span>26 Nov 2026 · prepared for architecture cleanup</span>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<script>
+  // scroll progress
+  var progress = document.getElementById('progress');
+  function onScroll(){
+    var h = document.documentElement;
+    var max = h.scrollHeight - h.clientHeight;
+    var pct = max > 0 ? (h.scrollTop / max) * 100 : 0;
+    progress.style.width = pct.toFixed(2) + '%';
+  }
+  window.addEventListener('scroll', onScroll, { passive:true });
+  onScroll();
+
+  // toc scroll-spy
+  var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+  var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function spy(){
+    var pos = window.scrollY + 120;
+    var idx = 0;
+    for (var i = 0; i < sections.length; i++){
+      if (sections[i] && sections[i].offsetTop <= pos) idx = i;
+    }
+    links.forEach(function(a, i){ a.classList.toggle('on', i === idx); });
+  }
+  window.addEventListener('scroll', spy, { passive:true });
+  window.addEventListener('resize', spy);
+  spy();
+</script>
+</body>
+</html>

@@ -9,70 +9,26 @@ import {
 import { FlowTabs, type DocFlow } from '../components/FlowTabs';
 import { Icon } from '../components/Icon';
 import { ACTIVITY_ITEMS, ProcessingPanel } from './Preprocessing';
-import type { NecOption } from '../lib/projects';
-import { projectStorageKey } from '../lib/projectStorage';
+import { optionInfo, type NecOption } from '../lib/projects';
 import { usePricingMode } from '../lib/pricingMode';
 import { formatBqQty, parseNumberInput } from '../lib/numberFormat';
+import { BQ_ITEMS, type BqOption } from '../lib/ceLinks';
 import {
-  BQ_ITEMS,
   ceLinkTarget,
+  ceRecordAmount,
   loadCeLinks,
+  loadCeRecords,
   loadPricingOptions,
   removeCeLink,
   saveCeLink,
-  type BqOption,
+  saveCeRecords,
+  type CeFields,
   type CeLink,
+  type CeOcrItem,
+  type CeRecord,
+  type CeRegion,
   type CeTargetType
-} from '../lib/ceLinks';
-
-interface CeOcrItem {
-  description: string;
-  unit: string;
-  qty: number;
-  rate: number;
-  amount: number;
-}
-
-interface CeFields {
-  ceNumber: string;
-  date: string;
-  reference: string;
-  amount: string;
-  quantity: string;
-  title: string;
-}
-
-/** A region of the original document the AI OCR result was extracted from. */
-interface CeRegion {
-  id: string;
-  label: string;
-  value: string;
-  /** Percentages of the page box. */
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  confidence: number;
-}
-
-interface CeDocumentImage {
-  dataUrl?: string;
-  mime?: string;
-}
-
-interface CeRecord {
-  id: string;
-  code: string;
-  name: string;
-  receivedAt: number;
-  confidence: number;
-  fields: CeFields;
-  text: string;
-  items: CeOcrItem[];
-  quantity?: number;
-  document?: CeDocumentImage;
-  regions?: CeRegion[];
-}
+} from '../data/ce';
 
 interface CeDraft {
   name: string;
@@ -85,8 +41,6 @@ interface CeDraft {
 
 type CePhase = 'upload' | 'bq' | 'processing' | 'complete';
 type CeView = 'records' | 'result';
-
-const STORAGE_BASE = 'apc.ce-records.v2';
 
 const CE_STEPS = [
   {
@@ -127,33 +81,7 @@ The Contractor is instructed to carry out additional drainage works at the south
 
 The assessed value of this compensation event is HK$ 128,500.00. The instruction is issued under Clause 6.14 and is to be incorporated into the Cleanse BQ CE column.`;
 
-const isCeRecord = (value: unknown): value is CeRecord => {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Partial<CeRecord>;
-  return (
-    typeof record.id === 'string' &&
-    typeof record.code === 'string' &&
-    typeof record.name === 'string' &&
-    typeof record.receivedAt === 'number' &&
-    typeof record.confidence === 'number' &&
-    Boolean(record.fields) &&
-    typeof record.text === 'string' &&
-    Array.isArray(record.items)
-  );
-};
-
-const loadRecords = (projectId?: string): CeRecord[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isCeRecord) : [];
-  } catch {
-    return [];
-  }
-};
+const loadRecords = loadCeRecords;
 
 const seedQuantity = seedItem.reduce((sum, item) => sum + item.qty, 0);
 
@@ -265,8 +193,8 @@ export function CompensationEventPage({
   const [pct, setPct] = useState(0);
   const [draft, setDraft] = useState<CeDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const activityMain = necOption === 'A' || necOption === 'C';
-  const targetType: CeTargetType = activityMain ? 'activity' : 'bq';
+  const option = optionInfo(necOption);
+  const targetType: CeTargetType = option.ceTarget;
   const targetLabel = targetType === 'activity' ? 'Activity Schedule' : 'BQ';
   const targetItems = targetType === 'activity' ? ACTIVITY_ITEMS : BQ_ITEMS;
   const targetOptions = useMemo(
@@ -281,14 +209,7 @@ export function CompensationEventPage({
   const [relinkItemIds, setRelinkItemIds] = useState<string[]>([]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        projectStorageKey(STORAGE_BASE, projectId),
-        JSON.stringify(records)
-      );
-    } catch {
-      return;
-    }
+    saveCeRecords(records, projectId);
   }, [records, projectId]);
 
   useEffect(() => {
@@ -332,7 +253,7 @@ export function CompensationEventPage({
           const record = makeOcrRecord(draft, records.length);
           setRecords(prev => [record, ...prev]);
           setActiveRecordId(record.id);
-          const target = targetOptions.find(option => option.id === linkTargetId);
+          const target = targetOptions.find(doc => doc.id === linkTargetId);
           if (target) {
             const next = saveCeLink(
               {
@@ -340,7 +261,7 @@ export function CompensationEventPage({
                 ceCode: record.code,
                 ceName: record.name,
                 title: record.fields.title,
-                amount: 128500,
+                amount: ceRecordAmount(record),
                 quantity: record.quantity,
                 date: record.fields.date,
                 reference: record.fields.reference,
@@ -555,7 +476,7 @@ export function CompensationEventPage({
 
   const saveRelink = () => {
     if (!activeRecord) return;
-    const target = targetOptions.find(option => option.id === relinkTargetId);
+    const target = targetOptions.find(doc => doc.id === relinkTargetId);
     const selectedIds = relinkItemIds.filter(id =>
       relinkItems.some(item => item.id === id)
     );
@@ -566,7 +487,7 @@ export function CompensationEventPage({
         ceCode: activeRecord.code,
         ceName: activeRecord.name,
         title: activeRecord.fields.title,
-        amount: 128500,
+        amount: ceRecordAmount(activeRecord),
         quantity: activeRecord.quantity,
         date: activeRecord.fields.date,
         reference: activeRecord.fields.reference,

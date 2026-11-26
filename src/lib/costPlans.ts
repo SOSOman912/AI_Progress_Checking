@@ -1,52 +1,25 @@
-export type NecOption = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
-export type CostDocType = 'bq' | 'ce' | 'invoices' | 'activity' | 'programme' | 'rates';
-export type DocRequirement = 'required' | 'optional' | 'conditional' | 'na';
+/**
+ * Cost / document requirement helpers.
+ *
+ * The NEC option data itself lives in `src/lib/projects.ts` (single source of
+ * truth). This module only adds the document *labels* and keeps the historical
+ * export names so nothing else has to change.
+ */
 
-export interface NecOptionInfo {
-  id: NecOption;
-  name: string;
-  contract: string;
-  note: string;
-}
+import {
+  NEC_OPTION_IDS,
+  NEC_OPTION_INFO,
+  REQUIREMENT_LABEL,
+  applicableDocs,
+  requiredDocs,
+  type CostDocType,
+  type DocRequirement,
+  type NecOption,
+  type NecOptionInfo
+} from './projects';
 
-export const NEC_OPTIONS: NecOptionInfo[] = [
-  {
-    id: 'A',
-    name: 'Option A',
-    contract: 'Priced contract with activity schedule',
-    note: 'Priced from the activity schedule'
-  },
-  {
-    id: 'B',
-    name: 'Option B',
-    contract: 'Priced contract with bill of quantities',
-    note: 'Priced from the bill of quantities'
-  },
-  {
-    id: 'C',
-    name: 'Option C',
-    contract: 'Target cost contract with activity schedule',
-    note: 'Target cost with activity schedule and invoices'
-  },
-  {
-    id: 'D',
-    name: 'Option D',
-    contract: 'Target cost contract with bill of quantities',
-    note: 'Target cost with BQ and invoices'
-  },
-  {
-    id: 'E',
-    name: 'Option E',
-    contract: 'Cost reimbursable contract',
-    note: 'Actual cost with invoices'
-  },
-  {
-    id: 'F',
-    name: 'Option F',
-    contract: 'Management contract',
-    note: 'Management contract with conditional BQ and activity schedule'
-  }
-];
+export type { CostDocType, DocRequirement, NecOption, NecOptionInfo };
+export { REQUIREMENT_LABEL, applicableDocs, requiredDocs };
 
 export const COST_DOC_TYPES: CostDocType[] = [
   'bq',
@@ -93,69 +66,17 @@ export const COST_DOC_INFO: Record<
   }
 };
 
-export const COST_DOC_MATRIX: Record<NecOption, Record<CostDocType, DocRequirement>> = {
-  A: {
-    bq: 'na',
-    ce: 'optional',
-    invoices: 'conditional',
-    activity: 'required',
-    programme: 'optional',
-    rates: 'conditional'
-  },
-  B: {
-    bq: 'required',
-    ce: 'optional',
-    invoices: 'conditional',
-    activity: 'na',
-    programme: 'optional',
-    rates: 'conditional'
-  },
-  C: {
-    bq: 'na',
-    ce: 'optional',
-    invoices: 'required',
-    activity: 'required',
-    programme: 'optional',
-    rates: 'conditional'
-  },
-  D: {
-    bq: 'required',
-    ce: 'optional',
-    invoices: 'required',
-    activity: 'na',
-    programme: 'optional',
-    rates: 'conditional'
-  },
-  E: {
-    bq: 'na',
-    ce: 'optional',
-    invoices: 'required',
-    activity: 'na',
-    programme: 'optional',
-    rates: 'conditional'
-  },
-  F: {
-    bq: 'conditional',
-    ce: 'optional',
-    invoices: 'required',
-    activity: 'conditional',
-    programme: 'optional',
-    rates: 'conditional'
-  }
-};
+export const NEC_OPTIONS: NecOptionInfo[] = NEC_OPTION_IDS.map(
+  id => NEC_OPTION_INFO[id]
+);
 
-export const REQUIREMENT_LABEL: Record<DocRequirement, string> = {
-  required: 'Required',
-  optional: 'Optional',
-  conditional: 'If required',
-  na: 'Not applicable'
-};
+/** Documents required per NEC option — derived, never edited here. */
+export const COST_DOC_MATRIX: Record<
+  NecOption,
+  Record<CostDocType, DocRequirement>
+> = Object.fromEntries(
+  NEC_OPTION_IDS.map(id => [id, NEC_OPTION_INFO[id].documents])
+) as Record<NecOption, Record<CostDocType, DocRequirement>>;
 
-export const optionInfo = (option: NecOption) =>
-  NEC_OPTIONS.find(item => item.id === option) ?? NEC_OPTIONS[0];
-
-export const applicableDocs = (option: NecOption): CostDocType[] =>
-  COST_DOC_TYPES.filter(type => COST_DOC_MATRIX[option][type] !== 'na');
-
-export const requiredDocs = (option: NecOption): CostDocType[] =>
-  COST_DOC_TYPES.filter(type => COST_DOC_MATRIX[option][type] === 'required');
+export const optionInfo = (option?: NecOption): NecOptionInfo =>
+  (option && NEC_OPTION_INFO[option]) || NEC_OPTION_INFO.A;

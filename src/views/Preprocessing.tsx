@@ -4,7 +4,11 @@ import { BqTable, type BqCeDetail } from '../components/BqPanels';
 import { DraggablePanel } from '../components/DraggablePanel';
 import { linksForActivity, linksForBq } from '../lib/ceLinks';
 import { SMM_SECTIONS } from '../lib/measurementLibrary';
-import { projectStorageKey } from '../lib/projectStorage';
+import {
+  loadBillMappingsFor,
+  saveBillMappingsFor,
+  type BillMappingRow
+} from '../data/bqActivityMap';
 import { usePricingMode } from '../lib/pricingMode';
 import { formatBqNumber } from '../lib/numberFormat';
 import { demoData, type BillLine } from '../lib/demo';
@@ -167,47 +171,9 @@ export function ProcessingPanel({
   );
 }
 
-type BillMappingRow = {
-  scheduleNo: string;
-  confirmed: boolean;
-};
+const loadBillMappings = loadBillMappingsFor;
 
-const BQ_BILL_MAP_BASE = 'apc.bq-activity-bill-map.v2';
-
-const loadBillMappings = (
-  bqId?: string,
-  projectId?: string
-): Record<string, BillMappingRow> => {
-  if (!bqId) return {};
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(BQ_BILL_MAP_BASE, projectId)
-    );
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, Record<string, BillMappingRow>>;
-    return parsed[bqId] ?? {};
-  } catch {
-    return {};
-  }
-};
-
-const saveBillMappings = (
-  bqId: string,
-  rows: Record<string, BillMappingRow>,
-  projectId?: string
-) => {
-  try {
-    const key = projectStorageKey(BQ_BILL_MAP_BASE, projectId);
-    const raw = window.localStorage.getItem(key);
-    const parsed = raw
-      ? (JSON.parse(raw) as Record<string, Record<string, BillMappingRow>>)
-      : {};
-    parsed[bqId] = rows;
-    window.localStorage.setItem(key, JSON.stringify(parsed));
-  } catch {
-    return;
-  }
-};
+const saveBillMappings = saveBillMappingsFor;
 
 const mergeBillMappings = (
   defaults: Record<string, BillMappingRow>,

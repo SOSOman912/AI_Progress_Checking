@@ -1,5 +1,9 @@
 import type { NecOption } from './costPlans';
-import { projectStorageKey } from './projectStorage';
+import {
+  STORAGE_KEYS,
+  readProjectJson,
+  writeProjectJson
+} from '../data/storage';
 
 export type MappingType = 'progress' | 'cost' | 'hybrid';
 export type MappingStatus = 'draft' | 'in-progress' | 'complete';
@@ -101,7 +105,7 @@ export const MAPPING_STATUS_LABEL: Record<MappingStatus, string> = {
 
 export const MAPPING_STANDARDS = ['HKCESMM 2011', 'HKSMM4', 'CESMM'];
 
-const STORAGE_BASE = 'apc.mapping-scenarios.v2';
+const STORAGE_BASE = STORAGE_KEYS.mappingScenarios;
 const DAY = 86_400_000;
 
 const seedScenarios = (): MappingScenario[] => {
@@ -224,31 +228,14 @@ const isScenario = (value: unknown): value is MappingScenario => {
 };
 
 export const loadMappingScenarios = (projectId?: string): MappingScenario[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isScenario) : [];
-  } catch {
-    return [];
-  }
+  const parsed = readProjectJson<unknown>(STORAGE_BASE, projectId, []);
+  return Array.isArray(parsed) ? parsed.filter(isScenario) : [];
 };
 
 export const saveMappingScenarios = (
   scenarios: MappingScenario[],
   projectId?: string
-) => {
-  try {
-    window.localStorage.setItem(
-      projectStorageKey(STORAGE_BASE, projectId),
-      JSON.stringify(scenarios)
-    );
-  } catch {
-    return;
-  }
-};
+): boolean => writeProjectJson(STORAGE_BASE, projectId, scenarios);
 
 export const newMappingScenarioId = () =>
   `map-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;

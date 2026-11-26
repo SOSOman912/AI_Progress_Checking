@@ -12,7 +12,8 @@ import { DraggablePanel } from '../components/DraggablePanel';
 import { Hint } from '../components/Hint';
 import { Icon, type IconName } from '../components/Icon';
 import { demoData, type ElementData } from '../lib/demo';
-import { NEC_OPTION_INFO, type NecOption } from '../lib/projects';
+import { loadSmmMaterials, saveSmmMaterials } from '../data/smm';
+import { optionInfo, type NecOption } from '../lib/projects';
 import {
   BAND_COLOR,
   BAND_HEX,
@@ -180,21 +181,10 @@ function MappingSmmPage({
   elements: ElementData[];
   onBack: () => void;
 }) {
-  const storageKey = `apc.smm-materials.${scenario.id}`;
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [overrides, setOverrides] = useState<Record<string, string>>(() => {
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== 'object') return {};
-      return Object.fromEntries(
-        Object.entries(parsed).filter(([, value]) => typeof value === 'string')
-      ) as Record<string, string>;
-    } catch {
-      return {};
-    }
-  });
+  const [overrides, setOverrides] = useState<Record<string, string>>(() =>
+    loadSmmMaterials(scenario.id)
+  );
   const [statusFilter, setStatusFilter] = useState<'all' | 'mapped' | 'unmapped'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [materialDraft, setMaterialDraft] = useState('');
@@ -204,12 +194,8 @@ function MappingSmmPage({
   const pricingLabel = scenario.sources?.activity ? 'Activity Schedule' : 'BQ';
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(overrides));
-    } catch {
-      return;
-    }
-  }, [overrides, storageKey]);
+    saveSmmMaterials(scenario.id, overrides);
+  }, [overrides, scenario.id]);
 
   const effectiveElements = useMemo(
     () =>
@@ -1898,10 +1884,11 @@ export function BimMapping({
   const [query, setQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [modelScenario, setModelScenario] = useState<MappingScenario | null>(null);
+  const option = optionInfo(necOption);
   const mainDoc: 'bq' | 'activity' | null =
-    necOption === 'A' || necOption === 'C'
+    option.main === 'activity' || option.main === 'activity-cost'
       ? 'activity'
-      : necOption === 'B' || necOption === 'D'
+      : option.main === 'bq'
         ? 'bq'
         : null;
   const [page, setPage] = useState<'library' | 'result' | 'cost' | 'smm'>('library');
@@ -2226,8 +2213,8 @@ export function BimMapping({
           <span>Mapping models</span>
         </div>
         {necOption && (
-          <span className="apc-map-home__nec" title={NEC_OPTION_INFO[necOption].contract}>
-            {NEC_OPTION_INFO[necOption].name} · {NEC_OPTION_INFO[necOption].mainLabel}
+          <span className="apc-map-home__nec" title={option.contract}>
+            {option.name} · {option.mainLabel}
           </span>
         )}
         <button className="apc-docpage__new" onClick={() => setCreateOpen(true)}>

@@ -11,132 +11,27 @@ import { Icon } from '../components/Icon';
 import { SublettingSchedule } from '../components/SublettingSchedule';
 import { ACTIVITY_ITEMS, BQ_SAMPLE_ITEMS } from './Preprocessing';
 import { loadPricingOptions } from '../lib/ceLinks';
-import { projectStorageKey } from '../lib/projectStorage';
 import { usePricingMode } from '../lib/pricingMode';
 import { formatBqQty } from '../lib/numberFormat';
 import {
+  clearDraftAssignments,
+  loadContracts,
+  loadDraftAssignments,
+  loadMappedScheduleNos,
   loadScheduleRows,
-  saveScheduleRows,
-  type SublettingScheduleRow
-} from '../lib/sublettingSchedule';
-import {
   loadSubcontractors,
   nextSubcontractorId,
+  saveContracts,
+  saveDraftAssignments,
+  saveScheduleRows,
   saveSubcontractors,
-  type Subcontractor
-} from '../lib/subcontractors';
+  type Subcontractor,
+  type SublettingContract,
+  type SublettingScheduleRow
+} from '../data/subletting';
 import type { NecOption } from '../lib/projects';
 
-interface SublettingContract {
-  id: string;
-  code: string;
-  subcontractor: string;
-  subcontractorId?: string;
-  activityId: string;
-  activityCode: string;
-  activityName: string;
-  itemIds: string[];
-  createdAt: number;
-}
-
-const STORAGE_BASE = 'apc.subletting-contracts.v1';
-const DRAFT_BASE = 'apc.subletting-draft.v1';
-const BQ_MAPPING_BASE = 'apc.bq-activity-bill-map.v2';
-
-const loadMappedBqSchedules = (projectId?: string): string[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(BQ_MAPPING_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Record<
-      string,
-      Record<string, { scheduleNo?: string; confirmed?: boolean }>
-    >;
-    const schedules = new Set<string>();
-    Object.values(parsed).forEach(rows => {
-      Object.values(rows ?? {}).forEach(row => {
-        if (row?.scheduleNo) schedules.add(String(row.scheduleNo));
-      });
-    });
-    return [...schedules];
-  } catch {
-    return [];
-  }
-};
-
-const loadContracts = (projectId?: string): SublettingContract[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (value): value is SublettingContract =>
-        !!value &&
-        typeof value === 'object' &&
-        typeof (value as SublettingContract).id === 'string' &&
-        typeof (value as SublettingContract).code === 'string' &&
-        typeof (value as SublettingContract).subcontractor === 'string' &&
-        Array.isArray((value as SublettingContract).itemIds) &&
-        typeof (value as SublettingContract).createdAt === 'number'
-    );
-  } catch {
-    return [];
-  }
-};
-
-const draftKey = (projectId: string | undefined, activityId: string) =>
-  projectStorageKey(`${DRAFT_BASE}.${activityId}`, projectId);
-
-const loadDraftAssignments = (
-  projectId: string | undefined,
-  activityId: string
-): Record<string, string> => {
-  if (!activityId) return {};
-  try {
-    const raw = window.localStorage.getItem(draftKey(projectId, activityId));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object') return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string'
-      )
-    );
-  } catch {
-    return {};
-  }
-};
-
-const saveDraftAssignments = (
-  projectId: string | undefined,
-  activityId: string,
-  assignments: Record<string, string>
-): boolean => {
-  try {
-    window.localStorage.setItem(
-      draftKey(projectId, activityId),
-      JSON.stringify(assignments)
-    );
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const clearDraftAssignments = (
-  projectId: string | undefined,
-  activityId: string
-) => {
-  try {
-    window.localStorage.removeItem(draftKey(projectId, activityId));
-  } catch {
-    return;
-  }
-};
+const loadMappedBqSchedules = loadMappedScheduleNos;
 
 const dateLabel = (time: number) =>
   new Date(time).toLocaleDateString('en-GB', {
@@ -209,14 +104,7 @@ export function SublettingPage({
   }, [subcontractors, projectId]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        projectStorageKey(STORAGE_BASE, projectId),
-        JSON.stringify(contracts)
-      );
-    } catch {
-      return;
-    }
+    saveContracts(contracts, projectId);
   }, [contracts, projectId]);
 
   const assignment = useMemo(() => {

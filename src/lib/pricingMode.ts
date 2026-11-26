@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { projectStorageKey } from './projectStorage';
+import { STORAGE_KEYS, projectKey, readRaw, writeRaw } from '../data/storage';
 
 /**
  * Project-level pricing decision taken during BQ / Activity Schedule import.
@@ -8,7 +8,7 @@ import { projectStorageKey } from './projectStorage';
  */
 export type PricingMode = 'priced' | 'quantity-only';
 
-const STORAGE_BASE = 'apc.pricing-mode.v1';
+const STORAGE_BASE = STORAGE_KEYS.pricingMode;
 const EVENT_NAME = 'apc:pricing-mode';
 
 export const PRICING_MODE_INFO: Record<
@@ -26,25 +26,12 @@ export const PRICING_MODE_INFO: Record<
 };
 
 export const loadPricingMode = (projectId?: string): PricingMode => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    return raw === 'quantity-only' ? 'quantity-only' : 'priced';
-  } catch {
-    return 'priced';
-  }
+  const raw = readRaw(projectKey(STORAGE_BASE, projectId));
+  return raw === 'quantity-only' ? 'quantity-only' : 'priced';
 };
 
 export const savePricingMode = (mode: PricingMode, projectId?: string) => {
-  try {
-    window.localStorage.setItem(
-      projectStorageKey(STORAGE_BASE, projectId),
-      mode
-    );
-  } catch {
-    return;
-  }
+  writeRaw(projectKey(STORAGE_BASE, projectId), mode);
   try {
     window.dispatchEvent(
       new CustomEvent(EVENT_NAME, {

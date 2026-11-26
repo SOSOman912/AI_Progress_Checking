@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Icon } from '../components/Icon';
-import { projectStorageKey } from '../lib/projectStorage';
+import {
+  loadLibraryRows as loadLibraryRowsFromStore,
+  saveLibraryRows
+} from '../data/measurement';
 import {
   SMM_ITEMS,
   SMM_SECTIONS,
   calculationRule,
-  defaultRows,
   rowSlot,
   targetLabel,
   type MeasureMapRow,
@@ -244,28 +246,7 @@ function MappingRows({
   );
 }
 
-const STORAGE_BASE = 'apc.measurement-library.v2';
-
-const defaultLibraryRows = (): Record<string, MeasureMapRow[]> =>
-  Object.fromEntries(SMM_ITEMS.map(item => [item.id, defaultRows(item.id)]));
-
-const loadLibraryRows = (projectId?: string): Record<string, MeasureMapRow[]> => {
-  const defaults = defaultLibraryRows();
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return defaults;
-    const parsed = JSON.parse(raw) as Record<string, MeasureMapRow[]>;
-    if (!parsed || typeof parsed !== 'object') return defaults;
-    Object.keys(defaults).forEach(id => {
-      if (Array.isArray(parsed[id])) defaults[id] = parsed[id];
-    });
-    return defaults;
-  } catch {
-    return defaults;
-  }
-};
+const loadLibraryRows = loadLibraryRowsFromStore;
 
 export function MeasurementLibrary({ projectId }: { projectId?: string }) {
   const [standard, setStandard] = useState<SmmStandard>('cesmm');
@@ -278,16 +259,8 @@ export function MeasurementLibrary({ projectId }: { projectId?: string }) {
   const [saved, setSaved] = useState(false);
 
   const saveSettings = () => {
-    try {
-      window.localStorage.setItem(
-        projectStorageKey(STORAGE_BASE, projectId),
-        JSON.stringify(rows)
-      );
-      setSaved(true);
-      window.setTimeout(() => setSaved(false), 1800);
-    } catch {
-      setSaved(false);
-    }
+    setSaved(saveLibraryRows(rows, projectId));
+    window.setTimeout(() => setSaved(false), 1800);
   };
 
   const q = query.trim().toLowerCase();

@@ -1,4 +1,5 @@
 import type { ProjectData } from './demo';
+import { STORAGE_KEYS, readRaw, writeRaw } from '../data/storage';
 
 export type AccessRole = 'qs' | 'member' | 'admin';
 
@@ -8,9 +9,14 @@ export interface Permissions {
 }
 
 export function loadPermissions(): Permissions {
-  const stored = (typeof localStorage !== 'undefined' && localStorage.getItem('apc.role')) || 'qs';
-  const role: AccessRole = stored === 'member' || stored === 'admin' ? stored : 'qs';
+  const stored = readRaw(STORAGE_KEYS.role) || 'qs';
+  const role: AccessRole =
+    stored === 'member' || stored === 'admin' ? stored : 'qs';
   return { role, canViewMoney: role !== 'member' };
+}
+
+export function saveAccessRole(role: AccessRole): boolean {
+  return writeRaw(STORAGE_KEYS.role, role);
 }
 
 export function withMoneyPermission(data: ProjectData, canViewMoney: boolean): ProjectData {

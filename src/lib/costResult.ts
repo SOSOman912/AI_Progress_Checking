@@ -5,37 +5,17 @@ import type { MappingScenario } from './mappingScenarios';
 
 export type CostResultMode = 'bq' | 'activity' | 'records';
 
-export interface CostCeRecord {
+/**
+ * CE input for the cost result. Built from `data/ce` links — this module never
+ * owns CE money, it only allocates what the CE repository reports.
+ */
+export interface CostCeInput {
   id: string;
   ref: string;
   title: string;
   amount: number;
-  itemIndexes: number[];
+  itemIds: string[];
 }
-
-export const COST_CE_RECORDS: CostCeRecord[] = [
-  {
-    id: 'ce-01',
-    ref: 'CE-01',
-    title: 'Additional reinforcement to foundation',
-    amount: 12000,
-    itemIndexes: [0, 3]
-  },
-  {
-    id: 'ce-02',
-    ref: 'CE-02',
-    title: 'Revised slab thickness at Level 1',
-    amount: 15600,
-    itemIndexes: [1, 2]
-  },
-  {
-    id: 'ce-03',
-    ref: 'CE-03',
-    title: 'Prolongation and revised sequence',
-    amount: 10900,
-    itemIndexes: [2, 3]
-  }
-];
 
 export interface CostCeDetail {
   id: string;
@@ -118,13 +98,15 @@ const mergeCeDetails = (details: CostCeDetail[]) => {
 
 export const buildCostResult = (
   scenario: MappingScenario,
+  ceLinks: CostCeInput[] = [],
   selectedCeIds?: string[]
 ): CostResult => {
   const sources = scenario.sources ?? {};
   const option: NecOption = sources.necOption ?? 'B';
   const info = optionInfo(option);
-  const hasBq = option === 'B' || option === 'D' || !!sources.bq;
-  const hasActivity = option === 'A' || option === 'C' || !!sources.activity;
+  const hasBq = info.main === 'bq' || !!sources.bq;
+  const hasActivity =
+    info.main === 'activity' || info.main === 'activity-cost' || !!sources.activity;
   const modes: CostResultMode[] = [];
   if (hasBq) modes.push('bq');
   if (hasActivity) modes.push('activity');
@@ -140,21 +122,21 @@ export const buildCostResult = (
 
   const ceAvailable = !!sources.ce;
   const selectedCe = ceAvailable
-    ? selectedCeIds ?? COST_CE_RECORDS.map(record => record.id)
+    ? selectedCeIds ?? ceLinks.map(record => record.id)
     : [];
-  const selectedCeRecords = COST_CE_RECORDS.filter(record => selectedCe.includes(record.id));
+  const selectedCeRecords = ceLinks.filter(record => selectedCe.includes(record.id));
 
   const bqItems = demoData.bill.lines.filter(line => line.type === 'item');
   const bq: CostBqLine[] = bqItems.map((line, index) => {
     const qty = line.override ?? line.contractQty ?? 0;
     const rate = line.rate ?? RATE_FALLBACK;
     const ceDetails = selectedCeRecords
-      .filter(record => record.itemIndexes.includes(index))
+      .filter(record => record.itemIds.includes(line.id))
       .map(record => ({
         id: record.id,
         ref: record.ref,
         title: record.title,
-        amount: Math.round(record.amount / record.itemIndexes.length),
+        amount: Math.round(record.amount / Math.max(1, record.itemIds.length)),
         total: record.amount
       }));
     return {

@@ -1,11 +1,15 @@
-import { projectStorageKey } from './projectStorage';
+import {
+  STORAGE_KEYS,
+  readProjectJson,
+  writeProjectJson
+} from '../data/storage';
 
 export interface Subcontractor {
   id: string;
   name: string;
 }
 
-const STORAGE_BASE = 'apc.subcontractors.v1';
+const STORAGE_BASE = STORAGE_KEYS.subcontractors;
 
 const isSubcontractor = (value: unknown): value is Subcontractor => {
   if (!value || typeof value !== 'object') return false;
@@ -14,31 +18,14 @@ const isSubcontractor = (value: unknown): value is Subcontractor => {
 };
 
 export const loadSubcontractors = (projectId?: string): Subcontractor[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isSubcontractor) : [];
-  } catch {
-    return [];
-  }
+  const parsed = readProjectJson<unknown>(STORAGE_BASE, projectId, []);
+  return Array.isArray(parsed) ? parsed.filter(isSubcontractor) : [];
 };
 
 export const saveSubcontractors = (
   list: Subcontractor[],
   projectId?: string
-) => {
-  try {
-    window.localStorage.setItem(
-      projectStorageKey(STORAGE_BASE, projectId),
-      JSON.stringify(list)
-    );
-  } catch {
-    return;
-  }
-};
+): boolean => writeProjectJson(STORAGE_BASE, projectId, list);
 
 export const nextSubcontractorId = (list: Subcontractor[]): string => {
   const max = list.reduce((current, item) => {

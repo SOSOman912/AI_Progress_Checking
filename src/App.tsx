@@ -14,12 +14,17 @@ import { BimMapping } from './views/BimMapping';
 import { ProjectHome, type NewProjectInput } from './views/ProjectHome';
 import { demoData, type ProjectData } from './lib/demo';
 import { loadPermissions, withMoneyPermission } from './lib/permissions';
-import { loadProjects, saveProjects, type ProjectRecord } from './lib/projects';
+import {
+  loadActiveProjectId,
+  loadProjects,
+  saveActiveProjectId,
+  saveProjects,
+  type ProjectRecord
+} from './lib/projects';
 import { usePricingMode } from './lib/pricingMode';
 
 type AppRoute = 'home' | ToolId;
 
-const ACTIVE_PROJECT_KEY = 'apc.active-project.v1';
 const ROUTES: ToolId[] = ['library', 'mapping', 'data', 'bill', 'review'];
 
 function readRoute(): AppRoute {
@@ -34,12 +39,8 @@ export default function App() {
   const [data, setData] = useState<ProjectData>(() => withMoneyPermission(demoData, permissions.canViewMoney));
   const [projects, setProjects] = useState<ProjectRecord[]>(loadProjects);
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(() => {
-    try {
-      const id = window.localStorage.getItem(ACTIVE_PROJECT_KEY);
-      return id ? projects.find(project => project.id === id) ?? null : null;
-    } catch {
-      return null;
-    }
+    const id = loadActiveProjectId();
+    return id ? projects.find(project => project.id === id) ?? null : null;
   });
   const [pricingMode] = usePricingMode(activeProject?.id);
   const canViewMoney = permissions.canViewMoney && pricingMode === 'priced';
@@ -74,15 +75,7 @@ export default function App() {
   }, [projects]);
 
   useEffect(() => {
-    try {
-      if (activeProject) {
-        window.localStorage.setItem(ACTIVE_PROJECT_KEY, activeProject.id);
-      } else {
-        window.localStorage.removeItem(ACTIVE_PROJECT_KEY);
-      }
-    } catch {
-      return;
-    }
+    saveActiveProjectId(activeProject?.id ?? null);
   }, [activeProject]);
 
   const go = (next: ToolId) => {

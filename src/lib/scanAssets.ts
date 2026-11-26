@@ -1,4 +1,8 @@
-import { projectStorageKey } from './projectStorage';
+import {
+  STORAGE_KEYS,
+  readProjectJson,
+  writeProjectJson
+} from '../data/storage';
 
 export type ScanAssetType = 'bim' | 'drawing' | 'scan';
 export type ScanStage = 'processing' | 'review' | 'cleanse';
@@ -22,7 +26,7 @@ export interface ScanAsset {
   modelId?: string;
 }
 
-const STORAGE_BASE = 'apc.scan-assets.v2';
+const STORAGE_BASE = STORAGE_KEYS.scanAssets;
 
 export const SEED_SCAN_ASSETS: ScanAsset[] = [
   {
@@ -168,32 +172,16 @@ const stageOf = (value: unknown): ScanStage =>
   value === 'processing' || value === 'cleanse' ? value : 'review';
 
 export const loadScanAssets = (projectId?: string): ScanAsset[] => {
-  try {
-    const raw = window.localStorage.getItem(
-      projectStorageKey(STORAGE_BASE, projectId)
-    );
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter(isScanAsset).map(asset => ({
-          ...asset,
-          stage: stageOf(asset.stage),
-          thumbnail: asset.thumbnail,
-          modelId: asset.modelId
-        }))
-      : [];
-  } catch {
-    return [];
-  }
+  const parsed = readProjectJson<unknown>(STORAGE_BASE, projectId, []);
+  return Array.isArray(parsed)
+    ? parsed.filter(isScanAsset).map(asset => ({
+        ...asset,
+        stage: stageOf(asset.stage),
+        thumbnail: asset.thumbnail,
+        modelId: asset.modelId
+      }))
+    : [];
 };
 
-export const saveScanAssets = (assets: ScanAsset[], projectId?: string) => {
-  try {
-    window.localStorage.setItem(
-      projectStorageKey(STORAGE_BASE, projectId),
-      JSON.stringify(assets)
-    );
-  } catch {
-    return;
-  }
-};
+export const saveScanAssets = (assets: ScanAsset[], projectId?: string) =>
+  writeProjectJson(STORAGE_BASE, projectId, assets);

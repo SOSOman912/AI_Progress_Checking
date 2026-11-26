@@ -1,7 +1,18 @@
-export const projectStorageKey = (base: string, projectId?: string | null) =>
-  `${base}:${projectId ?? 'unassigned'}`;
+/**
+ * Backwards-compatible key helpers.
+ *
+ * Storage itself lives in `src/data/storage.ts`; this module only re-exports the
+ * key builder under its historical name.
+ */
 
-export const DOCUMENTS_STORAGE_BASE = 'apc.documents.v3';
+import { STORAGE_KEYS, projectKey } from '../data/storage';
 
-export const documentsStorageKey = (projectId?: string | null) =>
-  projectStorageKey(DOCUMENTS_STORAGE_BASE, projectId);
+export const projectStorageKey = (
+  base: string,
+  projectId?: string | null
+): string => projectKey(base, projectId);
+
+export const DOCUMENTS_STORAGE_BASE = STORAGE_KEYS.documents;
+
+export const documentsStorageKey = (projectId?: string | null): string =>
+  projectKey(STORAGE_KEYS.documents, projectId);

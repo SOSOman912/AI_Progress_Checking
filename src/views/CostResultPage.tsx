@@ -2,12 +2,13 @@ import { Fragment, useMemo, useState } from 'react';
 import { Icon, type IconName } from '../components/Icon';
 import { MAPPING_DOC_ICON, type MappingScenario } from '../lib/mappingScenarios';
 import {
-  COST_CE_RECORDS,
   buildCostResult,
   costDocLabel,
   type CostCeDetail,
+  type CostCeInput,
   type CostResultMode
 } from '../lib/costResult';
+import { loadCeLinks } from '../data/ce';
 import { usePricingMode } from '../lib/pricingMode';
 import { formatBqQty } from '../lib/numberFormat';
 
@@ -52,14 +53,26 @@ export function CostReviewBody({
 }) {
   const [pricingMode] = usePricingMode(projectId);
   const moneyVisible = pricingMode === 'priced';
+  /* CE money always comes from the CE repository (apc.ce-links), never a constant. */
+  const ceLinks = useMemo<CostCeInput[]>(
+    () =>
+      loadCeLinks(projectId).map(link => ({
+        id: link.ceId,
+        ref: link.ceCode,
+        title: link.title,
+        amount: link.amount,
+        itemIds: link.itemIds
+      })),
+    [projectId]
+  );
   const [selectedCe, setSelectedCe] = useState<string[]>(() =>
-    scenario.sources?.ce ? COST_CE_RECORDS.map(record => record.id) : []
+    scenario.sources?.ce ? ceLinks.map(record => record.id) : []
   );
   const [expandedBq, setExpandedBq] = useState<Set<string>>(new Set());
   const [expandedActivity, setExpandedActivity] = useState<Set<string>>(new Set());
   const result = useMemo(
-    () => buildCostResult(scenario, selectedCe),
-    [scenario, selectedCe]
+    () => buildCostResult(scenario, ceLinks, selectedCe),
+    [scenario, ceLinks, selectedCe]
   );
 
   const certifiedPct = result.total ? Math.round((result.certified / result.total) * 100) : 0;
@@ -72,9 +85,9 @@ export function CostReviewBody({
   const mainDocLabel = `${result.mainDocs.length} main ${
     result.mainDocs.length === 1 ? 'document' : 'documents'
   }`;
-  const ceSelectedTotal = COST_CE_RECORDS.filter(record =>
-    selectedCe.includes(record.id)
-  ).reduce((sum, record) => sum + record.amount, 0);
+  const ceSelectedTotal = ceLinks
+    .filter(record => selectedCe.includes(record.id))
+    .reduce((sum, record) => sum + record.amount, 0);
 
   const bqTotal = result.bq.reduce((sum, line) => sum + line.amount, 0);
   const activityTotal = result.activity.reduce((sum, line) => sum + line.value, 0);
@@ -379,7 +392,13 @@ export function CostReviewBody({
               <span>{money(ceSelectedTotal)}</span>
             </div>
             <div className="apc-costresult__celist">
-              {COST_CE_RECORDS.map(record => (
+              {ceLinks.length === 0 && (
+                <p className="apc-costresult__ceempty">
+                  No compensation event has been linked to a BQ / activity item yet.
+                  Link one from the Compensation Event page.
+                </p>
+              )}
+              {ceLinks.map(record => (
                 <label key={record.id} className="apc-costresult__cerow">
                   <input
                     type="checkbox"
@@ -389,7 +408,7 @@ export function CostReviewBody({
                   <span>
                     <b>{record.ref}</b> {record.title}
                   </span>
-                  <em>{money(record.amount)}</em>
+                  <em>{moneyVisible ? money(record.amount) : '—'}</em>
                 </label>
               ))}
             </div>
