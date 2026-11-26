@@ -112,6 +112,9 @@ export interface BillLine {
   type: 'section' | 'group' | 'item' | 'note';
   label: string;
   lv?: number;
+  billNo?: string;
+  billTitle?: string;
+  scheduleNo?: string;
   measureGroups?: MeasureGroup[];
   no?: string;
   unit?: string;
@@ -317,6 +320,9 @@ const rawData: ProjectData = {
         type: 'section',
         label: 'Section 12  In-situ concrete',
         lv: 0,
+        billNo: '3',
+        billTitle: 'Site Formation',
+        scheduleNo: '3',
         measureGroups: [
           { title: 'Concrete grade', description: 'Different grades of concrete' },
           { title: 'Cement or pulverised fuel ash', description: 'Different types of cement, or pulverised fuel ash' },

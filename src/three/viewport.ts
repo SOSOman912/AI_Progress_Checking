@@ -76,6 +76,7 @@ export interface ViewportApi {
   hide(ids?: string[]): void;
   showAll(): void;
   setPointCloud(offset?: [number, number, number] | null): void;
+  setElementColors(colors: Record<string, number>, selectedId?: string | null): void;
   pivot(ids?: string[]): void;
   setSectionBox(on: boolean, settings?: SectionBoxSettings): void;
   setSectionPlane(on: boolean, settings?: SectionPlaneSettings): void;
@@ -290,6 +291,18 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
       m.material.transparent = !!dim;
       m.material.opacity = dim ? 0.55 : 1;
       if (m.userData.edge) m.userData.edge.opacity = dim ? 0.25 : 0.6;
+    });
+    paintCaps();
+    render();
+  }
+
+  function setElementColors(colors: Record<string, number>, selectedId?: string | null) {
+    Object.entries(meshes).forEach(([id, m]) => {
+      m.material.color.setHex(colors[id] ?? COL.base);
+      m.material.emissive.setHex(id === selectedId ? 0x2a1000 : 0x000000);
+      m.material.transparent = false;
+      m.material.opacity = 1;
+      if (m.userData.edge) m.userData.edge.opacity = 0.6;
     });
     paintCaps();
     render();
@@ -1126,6 +1139,7 @@ export function mount(container: HTMLDivElement, opts: ViewportOptions): Viewpor
       render();
     },
     setPointCloud,
+    setElementColors,
     pivot,
     setSectionBox(on, settings) {
       if (!on) {

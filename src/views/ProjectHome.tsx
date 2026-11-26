@@ -1,12 +1,19 @@
 import { useState, type FormEvent } from 'react';
 import { Icon } from '../components/Icon';
-import type { ProjectRecord, ProjectStandard } from '../lib/projects';
+import {
+  NEC_OPTION_IDS,
+  NEC_OPTION_INFO,
+  type NecOption,
+  type ProjectRecord,
+  type ProjectStandard
+} from '../lib/projects';
 
 export interface NewProjectInput {
   name: string;
   number: string;
   description: string;
   standard: ProjectStandard;
+  necOption: NecOption;
 }
 
 export function ProjectHome({
@@ -25,6 +32,7 @@ export function ProjectHome({
   const [number, setNumber] = useState('');
   const [description, setDescription] = useState('');
   const [standard, setStandard] = useState<ProjectStandard>('HKSMM4');
+  const [necOption, setNecOption] = useState<NecOption>('B');
   const [error, setError] = useState<string | null>(null);
 
   const openForm = () => {
@@ -32,6 +40,7 @@ export function ProjectHome({
     setNumber('');
     setDescription('');
     setStandard('HKSMM4');
+    setNecOption('B');
     setError(null);
     setFormOpen(true);
   };
@@ -46,7 +55,8 @@ export function ProjectHome({
       name: name.trim(),
       number: number.trim(),
       description: description.trim(),
-      standard
+      standard,
+      necOption
     });
     setFormOpen(false);
   };
@@ -70,7 +80,7 @@ export function ProjectHome({
         <main className="apc-home__main">
           <header className="apc-home__hello">
             <h1>Hello {userName}</h1>
-            <p>Select a project to continue.</p>
+            <p>No project selected.</p>
           </header>
 
           <div className="apc-home__tabs">
@@ -90,6 +100,7 @@ export function ProjectHome({
                   <th>Name</th>
                   <th>Number</th>
                   <th>Standard</th>
+                  <th>NEC Option</th>
                   <th />
                 </tr>
               </thead>
@@ -113,6 +124,12 @@ export function ProjectHome({
                         {project.standard}
                       </span>
                     </td>
+                    <td>
+                      <span className="apc-home__nec">{NEC_OPTION_INFO[project.necOption].name}</span>
+                      <small className="apc-home__necmain">
+                        {NEC_OPTION_INFO[project.necOption].mainLabel}
+                      </small>
+                    </td>
                     <td className="apc-home__open">
                       <Icon name="chevron-right" size={15} />
                     </td>
@@ -120,7 +137,7 @@ export function ProjectHome({
                 ))}
                 {!projects.length && (
                   <tr>
-                    <td colSpan={5} className="apc-home__empty">
+                    <td colSpan={6} className="apc-home__empty">
                       No projects yet. Create your first project.
                     </td>
                   </tr>
@@ -141,7 +158,6 @@ export function ProjectHome({
             <div className="apc-home__formhead">
               <div>
                 <b>Create project</b>
-                <span>Set up a new project workspace.</span>
               </div>
               <button type="button" className="apc-iconbtn" onClick={() => setFormOpen(false)} aria-label="Close">
                 <Icon name="x" size={15} />
@@ -172,6 +188,22 @@ export function ProjectHome({
                   <option value="HKSMM4">HKSMM4</option>
                   <option value="CESMM">CESMM</option>
                 </select>
+              </label>
+              <label>
+                <span>NEC Option</span>
+                <select
+                  value={necOption}
+                  onChange={event => setNecOption(event.target.value as NecOption)}
+                >
+                  {NEC_OPTION_IDS.map(id => (
+                    <option key={id} value={id}>
+                      {NEC_OPTION_INFO[id].name} — {NEC_OPTION_INFO[id].contract}
+                    </option>
+                  ))}
+                </select>
+                <small className="apc-home__nechint">
+                  Main pricing document: {NEC_OPTION_INFO[necOption].mainLabel}
+                </small>
               </label>
               {error && <div className="apc-home__error">{error}</div>}
             </div>

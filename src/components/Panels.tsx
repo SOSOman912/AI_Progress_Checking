@@ -201,8 +201,17 @@ export function BillPage({
 
 export function PageStub() {
   return (
-    <main className="apc-page">
-      <div className="apc-pagestub" />
+    <main className="apc-docpage">
+      <header className="apc-docpage__head">
+        <div className="apc-docpage__title">
+          <h1>eCheck Payment</h1>
+        </div>
+      </header>
+      <div className="apc-docpage__empty">
+        <Icon name="badge-check" size={28} />
+        <b>eCheck Payment</b>
+        <span>No payment records.</span>
+      </div>
     </main>
   );
 }

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Icon, type IconName } from '../components/Icon';
 import { CompensationEventPage } from './CompensationEventPage';
+import { SublettingPage } from './SublettingPage';
 import { FlowTabs, type DocFlow } from '../components/FlowTabs';
+import type { NecOption } from '../lib/projects';
+import { documentsStorageKey } from '../lib/projectStorage';
 import {
+  ACTIVITY_ITEMS,
   BqRecordTable,
   CleanseBqView,
   PreprocessingResult,
+  PROCESS_STEPS,
   ProcessingPanel,
   type BqRecordRow,
   type ViewerDoc
@@ -14,7 +19,7 @@ import {
 type DocKind = 'bq' | 'sp' | 'pp' | 'drawing';
 type DocStatus = 'uploading' | 'ready';
 type WorkspaceView = 'documents' | 'result' | 'cleanse';
-type ImportPhase = 'upload' | 'processing' | 'complete';
+type ImportPhase = 'upload' | 'link' | 'processing' | 'complete';
 type ResultMode = 'review' | 'reprocess';
 
 interface DocFile {
@@ -33,20 +38,17 @@ interface BqRecord {
   name: string;
   files: DocFile[];
   status: 'pending' | 'confirm';
+  flow?: 'bq' | 'activity';
   processedAt: number;
+  activityItemIds?: string[];
+  linkedActivityId?: string;
+  linkedActivityCode?: string;
+  linkedActivityName?: string;
 }
 
 interface StoredRecords {
   records: BqRecord[];
 }
-
-interface LegacyStoredDocuments {
-  files?: unknown;
-  bqRecordStatus?: unknown;
-}
-
-const STORAGE_KEY = 'apc.documents.v2';
-const LEGACY_STORAGE_KEY = 'apc.documents.v1';
 
 const isDocFile = (value: unknown): value is DocFile => {
   if (!value || typeof value !== 'object') return false;
@@ -72,47 +74,41 @@ const isBqRecord = (value: unknown): value is BqRecord => {
     Array.isArray(record.files) &&
     record.files.every(isDocFile) &&
     (record.status === 'pending' || record.status === 'confirm') &&
-    typeof record.processedAt === 'number'
+    typeof record.processedAt === 'number' &&
+    (record.activityItemIds === undefined ||
+      (Array.isArray(record.activityItemIds) &&
+        record.activityItemIds.every(id => typeof id === 'string'))) &&
+    (record.linkedActivityId === undefined ||
+      typeof record.linkedActivityId === 'string') &&
+    (record.linkedActivityCode === undefined ||
+      typeof record.linkedActivityCode === 'string') &&
+    (record.linkedActivityName === undefined ||
+      typeof record.linkedActivityName === 'string')
   );
 };
 
-const loadRecords = (): BqRecord[] => {
+const loadRecords = (projectId?: string): BqRecord[] => {
   try {
-    const current = window.localStorage.getItem(STORAGE_KEY);
-    if (current) {
-      const parsed = JSON.parse(current) as Partial<StoredRecords>;
-      if (Array.isArray(parsed.records)) return parsed.records.filter(isBqRecord);
-    }
-
-    const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (!legacy) return [];
-    const data = JSON.parse(legacy) as LegacyStoredDocuments;
-    const files = Array.isArray(data.files) ? data.files.filter(isDocFile) : [];
-    if (!files.length) return [];
-    if (data.bqRecordStatus !== 'pending' && data.bqRecordStatus !== 'confirm') return [];
-    const bq = files.find(file => file.kind === 'bq' && file.status === 'ready') ?? files.find(file => file.kind === 'bq');
-    const record: BqRecord = {
-      id: `legacy-${Date.now()}`,
-      code: 'BQ-2026-001',
-      name: bq?.name ?? 'BQ record',
-      files,
-      status: data.bqRecordStatus,
-      processedAt: Date.now()
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ records: [record] }));
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-    return [record];
+    const current = window.localStorage.getItem(documentsStorageKey(projectId));
+    if (!current) return [];
+    const parsed = JSON.parse(current) as Partial<StoredRecords>;
+    return Array.isArray(parsed.records)
+      ? parsed.records.filter(isBqRecord)
+      : [];
   } catch {
     return [];
   }
 };
 
-const nextRecordCode = (records: BqRecord[]) => {
-  const max = records.reduce((value, record) => {
-    const number = Number(record.code.split('-').pop());
-    return Number.isFinite(number) ? Math.max(value, number) : value;
-  }, 0);
-  return `BQ-2026-${String(max + 1).padStart(3, '0')}`;
+const nextRecordCode = (records: BqRecord[], flow: 'bq' | 'activity' = 'bq') => {
+  const prefix = flow === 'activity' ? 'AS' : 'BQ';
+  const max = records
+    .filter(record => (record.flow ?? 'bq') === flow)
+    .reduce((value, record) => {
+      const number = Number(record.code.split('-').pop());
+      return Number.isFinite(number) ? Math.max(value, number) : value;
+    }, 0);
+  return `${prefix}-2026-${String(max + 1).padStart(3, '0')}`;
 };
 
 const DOC_TYPES: Array<{
@@ -150,15 +146,6 @@ const DOC_TYPES: Array<{
     art: '/import/particular-preamble.png',
     accept: '.pdf,.doc,.docx,.xlsx,.xls',
     hint: 'PDF, Word or Excel'
-  },
-  {
-    id: 'drawing',
-    label: 'Drawing',
-    short: 'DWG',
-    icon: 'drafting-compass',
-    art: '/import/drawing.png',
-    accept: '.pdf,.dwg,.dxf,.rvt,.ifc',
-    hint: 'PDF, DWG, DXF, RVT or IFC'
   }
 ];
 
@@ -172,31 +159,73 @@ const dateLabel = (time: number) =>
 
 const kindMeta = (kind: DocKind) => DOC_TYPES.find(d => d.id === kind)!;
 
-export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
-  const initialRecords = useMemo(loadRecords, []);
+export function DocumentManagement({
+  mode,
+  necOption,
+  standard,
+  projectId
+}: {
+  mode: 'pricing' | 'invoice';
+  necOption?: NecOption;
+  standard?: string;
+  projectId?: string;
+}) {
+  const initialRecords = useMemo(() => loadRecords(projectId), [projectId]);
   const [records, setRecords] = useState<BqRecord[]>(initialRecords);
   const [draftFiles, setDraftFiles] = useState<DocFile[]>([]);
   const [workflowRecordId, setWorkflowRecordId] = useState<string | null>(null);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [resultMode, setResultMode] = useState<ResultMode>('review');
   const [recordMenuId, setRecordMenuId] = useState<string | null>(null);
-  const [activeFlow, setActiveFlow] = useState<DocFlow>('bq');
+  const [activeFlow, setActiveFlow] = useState<DocFlow>(
+    necOption === 'A' || necOption === 'C' ? 'activity' : 'bq'
+  );
+  const [ceRecordId, setCeRecordId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importPhase, setImportPhase] = useState<ImportPhase>('upload');
+  const [linkActivityId, setLinkActivityId] = useState('');
+  const activityOptions = useMemo(
+    () =>
+      records
+        .filter(record => record.flow === 'activity')
+        .map(record => ({
+          id: record.id,
+          code: record.code,
+          name: record.name,
+          itemIds: record.activityItemIds
+        })),
+    [records]
+  );
   const [processingPct, setProcessingPct] = useState(0);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('documents');
   const [confirming, setConfirming] = useState(false);
   const [missingTypes, setMissingTypes] = useState<DocKind[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
   const [recordQuery, setRecordQuery] = useState('');
+  const isActivityFlow = activeFlow === 'activity';
+  const activityMain = necOption === 'A' || necOption === 'C';
+  const isBqReference = activityMain && !isActivityFlow;
+  const mappingMode = activityMain && !isActivityFlow;
+  const flowKind: 'bq' | 'activity' = isActivityFlow ? 'activity' : 'bq';
+  const importTypes = DOC_TYPES.map((type, index) => {
+    if (index === 0) {
+      return isActivityFlow
+        ? { ...type, label: 'Activity Schedule', short: 'AS', icon: 'clipboard-check' as IconName }
+        : type;
+    }
+    return { ...type, label: `${type.label} (optional)` };
+  });
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ records }));
+      window.localStorage.setItem(
+        documentsStorageKey(projectId),
+        JSON.stringify({ records })
+      );
     } catch {
       return;
     }
-  }, [records]);
+  }, [records, projectId]);
 
   useEffect(() => {
     if (!recordMenuId) return;
@@ -232,17 +261,66 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
       .filter(file => file.status === 'ready')
       .map(file => ({ ...file, progress: 100, status: 'ready' as const }));
     const bqName = snapshot.find(file => file.kind === 'bq')?.name ?? 'BQ record';
+    const bqFiles = snapshot.filter(file => file.kind === 'bq');
+    const preambleFiles = snapshot.filter(file => file.kind !== 'bq');
+    const linkedActivity = activityOptions.find(
+      option => option.id === linkActivityId
+    );
+    const linkedActivityFields =
+      isBqReference && linkedActivity
+        ? {
+            linkedActivityId: linkedActivity.id,
+            linkedActivityCode: linkedActivity.code,
+            linkedActivityName: linkedActivity.name
+          }
+        : {};
+    const splitBq = flowKind === 'bq' && bqFiles.length > 1;
+    const splitIds = splitBq
+      ? bqFiles.map(
+          (_, index) =>
+            `rec-${Date.now() + index}-${Math.random().toString(36).slice(2, 7)}`
+        )
+      : [];
     const timer = window.setInterval(() => {
-      const next = Math.min(100, Math.round(((Date.now() - started) / 10000) * 100));
+      const next = Math.min(100, Math.round(((Date.now() - started) / 3000) * 100));
       setProcessingPct(next);
       if (next >= 100) {
         window.clearInterval(timer);
         const now = Date.now();
-        if (workflowRecordId) {
+        if (splitBq && !workflowRecordId) {
+          setRecords(prev => {
+            const working = [...prev];
+            bqFiles.forEach((bqFile, index) => {
+              working.push({
+                id: splitIds[index],
+                code: nextRecordCode(working, 'bq'),
+                name: bqFile.name,
+                files: [bqFile, ...preambleFiles],
+                status: 'pending',
+                flow: 'bq',
+                processedAt: now + index,
+                ...linkedActivityFields
+              });
+            });
+            return working;
+          });
+          setActiveRecordId(splitIds[0]);
+        } else if (workflowRecordId) {
           setRecords(prev =>
             prev.map(record =>
               record.id === workflowRecordId
-                ? { ...record, files: snapshot, name: bqName, status: 'pending', processedAt: now }
+                ? {
+                    ...record,
+                    files: snapshot,
+                    name: bqName,
+                    status: 'pending',
+                    processedAt: now,
+                    activityItemIds:
+                      flowKind === 'activity'
+                        ? ACTIVITY_ITEMS.map(item => item.id)
+                        : record.activityItemIds,
+                    ...linkedActivityFields
+                  }
                 : record
             )
           );
@@ -253,11 +331,17 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
             ...prev,
             {
               id,
-              code: nextRecordCode(prev),
+              code: nextRecordCode(prev, flowKind),
               name: bqName,
               files: snapshot,
               status: 'pending',
-              processedAt: now
+              flow: flowKind,
+              processedAt: now,
+              activityItemIds:
+                flowKind === 'activity'
+                  ? ACTIVITY_ITEMS.map(item => item.id)
+                  : undefined,
+              ...linkedActivityFields
             }
           ]);
           setActiveRecordId(id);
@@ -266,16 +350,59 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
       }
     }, 80);
     return () => window.clearInterval(timer);
-  }, [importPhase, draftFiles, workflowRecordId]);
+  }, [
+    importPhase,
+    draftFiles,
+    workflowRecordId,
+    flowKind,
+    linkActivityId,
+    activityOptions,
+    isBqReference
+  ]);
 
   const readyDraftDocs = draftFiles.filter(file => file.status === 'ready');
+  const processingHasSp = readyDraftDocs.some(file => file.kind === 'sp');
+  const processingHasPp = readyDraftDocs.some(file => file.kind === 'pp');
+  const processingSteps = PROCESS_STEPS.filter(
+    step =>
+      step.title !== 'Checking PP against SP' ||
+      (processingHasSp && processingHasPp)
+  );
+  const processingDoneBody =
+    processingHasSp || processingHasPp
+      ? `${processingHasSp && processingHasPp ? 2 : 1} ${
+          processingHasSp && processingHasPp ? 'corrections were' : 'correction was'
+        } found and written to the Cleanse ${
+          isActivityFlow ? 'Activity Schedule' : 'BQ'
+        }.`
+      : `The ${isActivityFlow ? 'Activity Schedule' : 'Bill of Quantity'} has been processed.`;
   const filesForType = (kind: DocKind) =>
     draftFiles.filter(file => file.kind === kind).sort((a, b) => b.addedAt - a.addedAt);
-  const hasAllTypes = DOC_TYPES.every(type => {
-    const list = filesForType(type.id);
-    return list.length > 0 && list.every(file => file.status === 'ready');
-  });
-  const activeRecord = records.find(record => record.id === activeRecordId) ?? null;
+  const hasMainDoc = filesForType('bq').length > 0 && filesForType('bq').every(
+    file => file.status === 'ready'
+  );
+  const flowRecords = records.filter(
+    record => (record.flow ?? 'bq') === flowKind
+  );
+  const activeRecord = flowRecords.find(record => record.id === activeRecordId) ?? null;
+  const activeLinkedActivity =
+    activeRecord?.linkedActivityCode
+      ? {
+          code: activeRecord.linkedActivityCode,
+          name: activeRecord.linkedActivityName ?? 'Activity Schedule'
+        }
+      : undefined;
+  const linkedBqRecords =
+    activeRecord && isActivityFlow
+      ? records
+          .filter(
+            record =>
+              record.flow !== 'activity' &&
+              (record.linkedActivityId === activeRecord.id ||
+                record.linkedActivityCode === activeRecord.code)
+          )
+          .map(record => ({ code: record.code, name: record.name }))
+      : [];
 
   const viewerDocs = useMemo<ViewerDoc[]>(
     () =>
@@ -293,6 +420,7 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
   const recordRows = useMemo<BqRecordRow[]>(
     () =>
       [...records]
+        .filter(record => (record.flow ?? 'bq') === flowKind)
         .sort((a, b) => b.processedAt - a.processedAt)
         .map(record => ({
           id: record.id,
@@ -301,7 +429,7 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
           processedAt: dateLabel(record.processedAt),
           status: record.status
         })),
-    [records]
+    [records, flowKind]
   );
 
   const filteredRecordRows = useMemo(() => {
@@ -359,6 +487,16 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
 
   const selectFlow = (flow: DocFlow) => {
     setActiveFlow(flow);
+    setCeRecordId(null);
+    setActiveRecordId(null);
+    setWorkspaceView('documents');
+    setConfirming(false);
+    setRecordMenuId(null);
+  };
+
+  const openCeResult = (ceId: string) => {
+    setCeRecordId(ceId);
+    setActiveFlow('ce');
     setWorkspaceView('documents');
     setConfirming(false);
     setRecordMenuId(null);
@@ -376,13 +514,14 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
   };
 
   const finishImport = () => {
-    const missing = DOC_TYPES.filter(type => !filesForType(type.id).length).map(type => type.id);
-    if (missing.length) {
-      setMissingTypes(missing);
-      setImportError('Upload the highlighted document types to continue.');
+    if (!filesForType('bq').length) {
+      setMissingTypes(['bq']);
+      setImportError(
+        `Upload the ${isActivityFlow ? 'Activity Schedule' : 'Bill of Quantity'} to continue.`
+      );
       return;
     }
-    if (!hasAllTypes) {
+    if (!hasMainDoc) {
       setMissingTypes([]);
       setImportError('Please wait for the uploads to finish.');
       return;
@@ -390,6 +529,11 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
     setMissingTypes([]);
     setImportError(null);
     setProcessingPct(0);
+    if (isBqReference) {
+      setLinkActivityId(activeRecord?.linkedActivityId ?? '');
+      setImportPhase('link');
+      return;
+    }
     setImportPhase('processing');
   };
 
@@ -468,27 +612,53 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
     return (
       <main className="apc-docpage">
         <header className="apc-docpage__head">
-          <h1>Invoice / DN</h1>
+          <div className="apc-docpage__title">
+            <h1>Document Management</h1>
+            <span>Invoice / DN</span>
+          </div>
         </header>
         <div className="apc-docpage__empty">
           <Icon name="invoice-dn" size={28} />
           <b>Invoice / DN</b>
-          <span>This workspace will handle invoice and delivery-note uploads.</span>
+          <span>No invoice or delivery note uploaded.</span>
         </div>
       </main>
     );
   }
 
   if (activeFlow === 'ce') {
-    return <CompensationEventPage onFlow={selectFlow} />;
+    return (
+      <CompensationEventPage
+        onFlow={selectFlow}
+        initialRecordId={ceRecordId ?? undefined}
+        necOption={necOption}
+        projectId={projectId}
+      />
+    );
+  }
+
+  if (activeFlow === 'subletting') {
+    return (
+      <SublettingPage
+        projectId={projectId}
+        necOption={necOption}
+        onFlow={selectFlow}
+      />
+    );
   }
 
   return (
     <main className="apc-docpage">
       <header className="apc-docpage__head">
         <div className="apc-docpage__title">
-          <h1>BQ records</h1>
-          <span>Manage, reprocess and confirm BQ workflows.</span>
+          <h1>Document Management</h1>
+          <span>
+            {isActivityFlow
+              ? 'Activity Schedule records'
+              : activityMain
+                ? 'Bill of Quantity reference records'
+                : 'Bill of Quantity records'}
+          </span>
         </div>
         {workspaceView === 'documents' && (
           <button className="apc-docpage__new" onClick={startNewImport}>
@@ -498,7 +668,7 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
         )}
       </header>
 
-      <FlowTabs activeFlow={activeFlow} onSelect={selectFlow} />
+      <FlowTabs activeFlow={activeFlow} onSelect={selectFlow} necOption={necOption} />
 
       <div className="apc-docpage__body">
         {workspaceView === 'result' ? (
@@ -506,15 +676,38 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
             <PreprocessingResult
               docs={viewerDocs}
               actionLabel={
-                resultMode === 'reprocess'
-                  ? 'Submission Additional document and Reprocess'
-                  : 'Confirm & generate Cleanse BQ'
+                mappingMode
+                  ? resultMode === 'reprocess'
+                    ? 'Confirm mapping & reprocess'
+                    : 'Confirm mapping & generate Cleanse BQ'
+                  : resultMode === 'reprocess'
+                    ? 'Submission Additional document and Reprocess'
+                    : `Confirm & generate ${isActivityFlow ? 'Cleanse Activity Schedule' : 'Cleanse BQ'}`
               }
+              flowLabel={isActivityFlow ? 'Activity Schedule' : 'BQ'}
+              smmStandard={standard ?? 'HKSMM4'}
+              mappingMode={mappingMode}
+              structuredBq={!isActivityFlow}
+              showMissingReport={!activityMain}
+              bqId={activeRecord?.id}
+              bqCode={activeRecord?.code}
+              projectId={projectId}
+              linkedActivity={activeLinkedActivity}
               onAction={resultMode === 'reprocess' ? startReprocess : confirmBq}
             />
           </div>
         ) : workspaceView === 'cleanse' ? (
-          <CleanseBqView />
+          <CleanseBqView
+            bqId={activeRecord?.id}
+            bqCode={activeRecord?.code}
+            bqName={activeRecord?.name}
+            heading={isActivityFlow ? 'Cleanse Activity Schedule' : 'Cleanse BQ'}
+            onOpenCe={openCeResult}
+            projectId={projectId}
+            linkedActivity={activeLinkedActivity}
+            linkedBqs={linkedBqRecords}
+            sampleBq={activityMain && !isActivityFlow}
+          />
         ) : (
           <div className="apc-docpage__content apc-docpage__content--records">
             <div className="apc-recordstoolbar">
@@ -539,6 +732,12 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
               onToggleMenu={id => setRecordMenuId(prev => (prev === id ? null : id))}
               onReprocess={openRecordResult}
               onDelete={deleteRecord}
+              recordLabel={isActivityFlow ? 'Activity Schedule record' : 'BQ record'}
+              emptyText={
+                isActivityFlow
+                  ? 'No Activity Schedule records found.'
+                  : 'No BQ records found.'
+              }
             />
           </div>
         )}
@@ -561,12 +760,11 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
             <section className="apc-importpop" role="dialog" aria-label="Import pricing documents">
               <div className="apc-importpop__head">
                 <div>
-                  <b>{workflowRecordId ? 'Update pricing documents' : 'Import pricing documents'}</b>
-                  <span>
+                  <b>
                     {workflowRecordId
-                      ? 'Add or remove documents, then reprocess this BQ record.'
-                      : 'Add the four document types before working in this module.'}
-                  </span>
+                      ? 'Update pricing documents'
+                      : `Import ${isActivityFlow ? 'activity schedule' : 'pricing'} documents`}
+                  </b>
                 </div>
                 <button className="apc-iconbtn" onClick={resetImportState} aria-label="Close import">
                   <Icon name="x" size={15} />
@@ -575,7 +773,7 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
 
               <div className="apc-importpop__scroll">
                 <div className="apc-importgrid">
-                  {DOC_TYPES.map(type => {
+                  {importTypes.map(type => {
                     const list = filesForType(type.id);
                     const file = list[0];
                     const multiple = list.length > 1;
@@ -703,14 +901,95 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
               <div className="apc-importpop__foot">
                 <span className={importError ? 'apc-importpop__error' : undefined}>
                   {importError ??
-                    (hasAllTypes
-                      ? `${readyDraftDocs.length} ${readyDraftDocs.length === 1 ? 'document' : 'documents'} imported`
+                    (hasMainDoc
+                      ? `${readyDraftDocs.length} ${
+                          readyDraftDocs.length === 1 ? 'document' : 'documents'
+                        } imported · preambles optional`
                       : draftFiles.some(file => file.status === 'uploading')
                         ? 'Uploading documents…'
-                        : 'Upload one file for each of the four document types.')}
+                        : `Upload the ${
+                            isActivityFlow ? 'Activity Schedule' : 'Bill of Quantity'
+                          }; preambles are optional.`)}
                 </span>
                 <button type="button" className="apc-docpage__import" onClick={finishImport}>
                   {workflowRecordId ? 'Reprocess' : 'Next Step'}
+                </button>
+              </div>
+            </section>
+          ) : importPhase === 'link' ? (
+            <section
+              className="apc-ceimportpop apc-bqlinkpop"
+              role="dialog"
+              aria-label="Link BQ to Activity Schedule"
+            >
+              <div className="apc-importpop__head">
+                <div>
+                  <b>Link BQ to Activity Schedule</b>
+                </div>
+                <button
+                  className="apc-iconbtn"
+                  onClick={resetImportState}
+                  aria-label="Close link dialog"
+                >
+                  <Icon name="x" size={15} />
+                </button>
+              </div>
+              <div className="apc-importpop__body">
+                {activityOptions.length ? (
+                  <div className="apc-map-doclist apc-ce-pickerlist">
+                    {activityOptions.map(option => {
+                      const selected = linkActivityId === option.id;
+                      return (
+                        <button
+                          type="button"
+                          key={option.id}
+                          className={`apc-map-doc${selected ? ' on' : ''}`}
+                          onClick={() => setLinkActivityId(option.id)}
+                          aria-pressed={selected}
+                        >
+                          <span className="apc-map-doc__icon is-bq">
+                            <Icon name="list-tree" size={16} />
+                          </span>
+                          <span className="apc-map-doc__body">
+                            <b>{option.code}</b>
+                            <span>{option.name}</span>
+                          </span>
+                          <i className="apc-map-doc__check">
+                            {selected && <Icon name="check" size={11} stroke={3} />}
+                          </i>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="apc-pre__reportempty">
+                    No Activity Schedule records found. Import an Activity Schedule first.
+                  </div>
+                )}
+              </div>
+              <div className="apc-importpop__foot">
+                <span>
+                  {linkActivityId
+                    ? `Linked to ${
+                        activityOptions.find(option => option.id === linkActivityId)?.code ??
+                        'Activity Schedule'
+                      }`
+                    : 'Select an Activity Schedule to continue.'}
+                </span>
+                <button
+                  type="button"
+                  className="apc-ce-back"
+                  onClick={() => setImportPhase('upload')}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="apc-docpage__import"
+                  disabled={!linkActivityId}
+                  onClick={() => setImportPhase('processing')}
+                >
+                  Start Processing
                 </button>
               </div>
             </section>
@@ -720,6 +999,8 @@ export function DocumentManagement({ mode }: { mode: 'pricing' | 'invoice' }) {
               complete={importPhase === 'complete'}
               onClose={resetImportState}
               onSeeResult={seeResult}
+              steps={processingSteps}
+              doneBody={processingDoneBody}
             />
           )}
         </div>

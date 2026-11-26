@@ -1,3 +1,5 @@
+import { projectStorageKey } from './projectStorage';
+
 export type ScanAssetType = 'bim' | 'drawing' | 'scan';
 export type ScanStage = 'processing' | 'review' | 'cleanse';
 
@@ -20,7 +22,7 @@ export interface ScanAsset {
   modelId?: string;
 }
 
-const STORAGE_KEY = 'apc.scan-assets.v1';
+const STORAGE_BASE = 'apc.scan-assets.v2';
 
 export const SEED_SCAN_ASSETS: ScanAsset[] = [
   {
@@ -71,7 +73,69 @@ export const SEED_SCAN_ASSETS: ScanAsset[] = [
     preview: 2,
     stage: 'processing'
   },
-
+  {
+    id: 'scan-d1',
+    type: 'drawing',
+    name: 'RW-03_S-201_General_Arrangement.pdf',
+    size: 8_400_000,
+    projectName: 'Tung Chung RW-03',
+    projectNumber: 'CV/2026/014',
+    clientName: 'Civil Engineering and Development Department',
+    uploader: 'Dicky Lam',
+    position: 'Quantity Surveyor',
+    addedAt: Date.UTC(2026, 10, 10, 14, 20),
+    favorite: false,
+    preview: 0,
+    stage: 'review'
+  },
+  {
+    id: 'scan-d2',
+    type: 'drawing',
+    name: 'RW-03_S-301_Structural_Framing.dwg',
+    size: 12_600_000,
+    projectName: 'Tung Chung RW-03',
+    projectNumber: 'CV/2026/014',
+    clientName: 'Civil Engineering and Development Department',
+    uploader: 'May',
+    position: 'BIM Coordinator',
+    avatar: '/import/May.png',
+    addedAt: Date.UTC(2026, 10, 9, 9, 5),
+    favorite: true,
+    preview: 1,
+    stage: 'review'
+  },
+  {
+    id: 'scan-p1',
+    type: 'scan',
+    name: 'Tung_Chung_RW-03_Scan_Level1.e57',
+    size: 185_000_000,
+    projectName: 'Tung Chung RW-03',
+    projectNumber: 'CV/2026/014',
+    clientName: 'Civil Engineering and Development Department',
+    uploader: 'John',
+    position: 'Land Surveyor',
+    avatar: '/import/john.png',
+    addedAt: Date.UTC(2026, 10, 8, 16, 48),
+    favorite: false,
+    preview: 0,
+    stage: 'review'
+  },
+  {
+    id: 'scan-p2',
+    type: 'scan',
+    name: 'Tung_Chung_RW-03_Scan_Level2.las',
+    size: 240_000_000,
+    projectName: 'Tung Chung RW-03',
+    projectNumber: 'CV/2026/014',
+    clientName: 'Civil Engineering and Development Department',
+    uploader: 'Mary',
+    position: 'Quantity Surveyor',
+    avatar: '/import/Mary.png',
+    addedAt: Date.UTC(2026, 10, 7, 10, 12),
+    favorite: false,
+    preview: 1,
+    stage: 'review'
+  }
 ];
 
 const isScanAsset = (value: unknown): value is ScanAsset => {
@@ -103,33 +167,32 @@ const isScanAsset = (value: unknown): value is ScanAsset => {
 const stageOf = (value: unknown): ScanStage =>
   value === 'processing' || value === 'cleanse' ? value : 'review';
 
-export const loadScanAssets = (): ScanAsset[] => {
+export const loadScanAssets = (projectId?: string): ScanAsset[] => {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return SEED_SCAN_ASSETS.filter(asset => asset.type === 'bim');
+    const raw = window.localStorage.getItem(
+      projectStorageKey(STORAGE_BASE, projectId)
+    );
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return SEED_SCAN_ASSETS;
-    return parsed
-      .filter(isScanAsset)
-      .filter(asset => asset.type === 'bim')
-      .map(asset => {
-        const seed = SEED_SCAN_ASSETS.find(item => item.id === asset.id);
-        const base = seed ? { ...seed, favorite: asset.favorite } : asset;
-        return {
-          ...base,
-          stage: stageOf(asset.stage ?? seed?.stage),
+    return Array.isArray(parsed)
+      ? parsed.filter(isScanAsset).map(asset => ({
+          ...asset,
+          stage: stageOf(asset.stage),
           thumbnail: asset.thumbnail,
           modelId: asset.modelId
-        };
-      });
+        }))
+      : [];
   } catch {
-    return SEED_SCAN_ASSETS;
+    return [];
   }
 };
 
-export const saveScanAssets = (assets: ScanAsset[]) => {
+export const saveScanAssets = (assets: ScanAsset[], projectId?: string) => {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(assets));
+    window.localStorage.setItem(
+      projectStorageKey(STORAGE_BASE, projectId),
+      JSON.stringify(assets)
+    );
   } catch {
     return;
   }

@@ -1,7 +1,27 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent
+} from 'react';
 import { FlowTabs, type DocFlow } from '../components/FlowTabs';
 import { Icon } from '../components/Icon';
-import { ProcessingPanel } from './Preprocessing';
+import { ACTIVITY_ITEMS, ProcessingPanel } from './Preprocessing';
+import type { NecOption } from '../lib/projects';
+import { projectStorageKey } from '../lib/projectStorage';
+import {
+  BQ_ITEMS,
+  ceLinkTarget,
+  loadCeLinks,
+  loadPricingOptions,
+  removeCeLink,
+  saveCeLink,
+  type BqOption,
+  type CeLink,
+  type CeTargetType
+} from '../lib/ceLinks';
 
 interface CeOcrItem {
   description: string;
@@ -37,10 +57,10 @@ interface CeDraft {
   status: 'uploading' | 'ready';
 }
 
-type CePhase = 'upload' | 'processing' | 'complete';
+type CePhase = 'upload' | 'bq' | 'processing' | 'complete';
 type CeView = 'records' | 'result';
 
-const STORAGE_KEY = 'apc.ce-records.v1';
+const STORAGE_BASE = 'apc.ce-records.v2';
 
 const CE_STEPS = [
   {
@@ -81,23 +101,6 @@ The Contractor is instructed to carry out additional drainage works at the south
 
 The assessed value of this compensation event is HK$ 128,500.00. The instruction is issued under Clause 6.14 and is to be incorporated into the Cleanse BQ CE column.`;
 
-const SEED_RECORD: CeRecord = {
-  id: 'ce-seed',
-  code: 'CE-2026-014',
-  name: 'CE-014 Additional drainage works.pdf',
-  receivedAt: Date.UTC(2026, 10, 13),
-  confidence: 98.6,
-  fields: {
-    ceNumber: 'CE-2026-014',
-    date: '13 Nov 2026',
-    reference: 'CE/2026/014',
-    amount: 'HK$ 128,500.00',
-    title: 'Additional drainage works'
-  },
-  text: seedText,
-  items: seedItem
-};
-
 const isCeRecord = (value: unknown): value is CeRecord => {
   if (!value || typeof value !== 'object') return false;
   const record = value as Partial<CeRecord>;
@@ -113,15 +116,16 @@ const isCeRecord = (value: unknown): value is CeRecord => {
   );
 };
 
-const loadRecords = (): CeRecord[] => {
+const loadRecords = (projectId?: string): CeRecord[] => {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [SEED_RECORD];
+    const raw = window.localStorage.getItem(
+      projectStorageKey(STORAGE_BASE, projectId)
+    );
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [SEED_RECORD];
-    return parsed.filter(isCeRecord);
+    return Array.isArray(parsed) ? parsed.filter(isCeRecord) : [];
   } catch {
-    return [SEED_RECORD];
+    return [];
   }
 };
 
@@ -146,9 +150,58 @@ const makeOcrRecord = (draft: CeDraft, index: number): CeRecord => {
   };
 };
 
-export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => void }) {
-  const initialRecords = useMemo(loadRecords, []);
+function BqOptionPicker({
+  options,
+  value,
+  onChange
+}: {
+  options: BqOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="apc-map-doclist apc-ce-pickerlist">
+      {options.map(option => {
+        const selected = value === option.id;
+        return (
+          <button
+            type="button"
+            key={option.id}
+            className={`apc-map-doc${selected ? ' on' : ''}`}
+            onClick={() => onChange(option.id)}
+            aria-pressed={selected}
+          >
+            <span className="apc-map-doc__icon is-bq">
+              <Icon name="file-spreadsheet" size={16} />
+            </span>
+            <span className="apc-map-doc__body">
+              <b>{option.code}</b>
+              <span>{option.name}</span>
+            </span>
+            <i className="apc-map-doc__check">
+              {selected && <Icon name="check" size={11} stroke={3} />}
+            </i>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function CompensationEventPage({
+  onFlow,
+  initialRecordId,
+  necOption,
+  projectId
+}: {
+  onFlow: (flow: DocFlow) => void;
+  initialRecordId?: string;
+  necOption?: NecOption;
+  projectId?: string;
+}) {
+  const initialRecords = useMemo(() => loadRecords(projectId), [projectId]);
   const [records, setRecords] = useState<CeRecord[]>(initialRecords);
+  const openedInitial = useRef<string | null>(null);
   const [view, setView] = useState<CeView>('records');
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -158,14 +211,41 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
   const [pct, setPct] = useState(0);
   const [draft, setDraft] = useState<CeDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activityMain = necOption === 'A' || necOption === 'C';
+  const targetType: CeTargetType = activityMain ? 'activity' : 'bq';
+  const targetLabel = targetType === 'activity' ? 'Activity Schedule' : 'BQ';
+  const targetItems = targetType === 'activity' ? ACTIVITY_ITEMS : BQ_ITEMS;
+  const targetOptions = useMemo(
+    () => loadPricingOptions(projectId, targetType),
+    [projectId, targetType]
+  );
+  const [links, setLinks] = useState<CeLink[]>(() => loadCeLinks(projectId));
+  const [linkTargetId, setLinkTargetId] = useState('');
+  const [linkItemIds, setLinkItemIds] = useState<string[]>([]);
+  const [relinkOpen, setRelinkOpen] = useState(false);
+  const [relinkTargetId, setRelinkTargetId] = useState('');
+  const [relinkItemIds, setRelinkItemIds] = useState<string[]>([]);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+      window.localStorage.setItem(
+        projectStorageKey(STORAGE_BASE, projectId),
+        JSON.stringify(records)
+      );
     } catch {
       return;
     }
-  }, [records]);
+  }, [records, projectId]);
+
+  useEffect(() => {
+    if (!initialRecordId || openedInitial.current === initialRecordId) return;
+    const record = records.find(item => item.id === initialRecordId);
+    if (!record) return;
+    openedInitial.current = initialRecordId;
+    setActiveRecordId(record.id);
+    setView('result');
+    setMenuId(null);
+  }, [initialRecordId, records]);
 
   useEffect(() => {
     if (!menuId) return;
@@ -198,12 +278,44 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
           const record = makeOcrRecord(draft, records.length);
           setRecords(prev => [record, ...prev]);
           setActiveRecordId(record.id);
+          const target = targetOptions.find(option => option.id === linkTargetId);
+          if (target) {
+            const next = saveCeLink(
+              {
+                ceId: record.id,
+                ceCode: record.code,
+                ceName: record.name,
+                title: record.fields.title,
+                amount: 128500,
+                date: record.fields.date,
+                reference: record.fields.reference,
+                targetType,
+                targetId: target.id,
+                targetCode: target.code,
+                targetName: target.name,
+                bqId: targetType === 'bq' ? target.id : undefined,
+                bqCode: targetType === 'bq' ? target.code : undefined,
+                bqName: targetType === 'bq' ? target.name : undefined,
+                itemIds: linkItemIds
+              },
+              projectId
+            );
+            setLinks(next);
+          }
         }
         setPhase('complete');
       }
     }, 80);
     return () => window.clearInterval(timer);
-  }, [phase, draft, records.length]);
+  }, [
+    phase,
+    draft,
+    records.length,
+    targetOptions,
+    linkTargetId,
+    linkItemIds,
+    targetType
+  ]);
 
   const filteredRecords = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -214,12 +326,32 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
   }, [records, query]);
 
   const activeRecord = records.find(record => record.id === activeRecordId) ?? null;
+  const activeLink = activeRecord
+    ? links.find(link => link.ceId === activeRecord.id) ?? null
+    : null;
+  const activeTarget = activeLink ? ceLinkTarget(activeLink) : null;
+  const activeLinkItems = activeLink
+    ? (activeTarget?.type === 'activity' ? ACTIVITY_ITEMS : BQ_ITEMS).filter(item =>
+        activeLink.itemIds.includes(item.id)
+      )
+    : [];
+  const activeAllocation =
+    activeLink && activeLinkItems.length
+      ? activeLink.amount / activeLinkItems.length
+      : 0;
+  const relinkTarget = targetOptions.find(option => option.id === relinkTargetId);
+  const relinkItems =
+    targetType === 'activity' && relinkTarget?.itemIds?.length
+      ? ACTIVITY_ITEMS.filter(item => relinkTarget.itemIds?.includes(item.id))
+      : targetItems;
 
   const openImport = () => {
     setDraft(null);
     setError(null);
     setPhase('upload');
     setPct(0);
+    setLinkTargetId('');
+    setLinkItemIds([]);
     setImportOpen(true);
     setMenuId(null);
   };
@@ -230,6 +362,8 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
     setDraft(null);
     setPct(0);
     setError(null);
+    setLinkTargetId('');
+    setLinkItemIds([]);
   };
 
   const pickFile = (file: File | null) => {
@@ -249,12 +383,38 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
     pickFile(event.dataTransfer.files?.[0] ?? null);
   };
 
-  const startProcessing = () => {
+  const goLinkTarget = () => {
     if (!draft || draft.status !== 'ready') {
       setError('Upload the CE document before continuing.');
       return;
     }
     setError(null);
+    setPhase('bq');
+  };
+
+  const aiLinkedItems = () => {
+    const linked = targetItems.filter(item => item.ce > 0).map(item => item.id);
+    if (linked.length) return linked;
+    return targetType === 'activity' ? [] : targetItems.map(item => item.id);
+  };
+
+  const chooseLinkTarget = (id: string) => {
+    setLinkTargetId(id);
+    setLinkItemIds(aiLinkedItems());
+    setError(null);
+  };
+
+  const startProcessing = () => {
+    if (!draft || draft.status !== 'ready') {
+      setError('Upload the CE document before continuing.');
+      return;
+    }
+    if (!linkTargetId) {
+      setError(`Choose the ${targetLabel} this CE links to.`);
+      return;
+    }
+    setError(null);
+    setLinkItemIds(aiLinkedItems());
     setPct(0);
     setPhase('processing');
   };
@@ -275,11 +435,71 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
 
   const deleteRecord = (id: string) => {
     setRecords(prev => prev.filter(record => record.id !== id));
+    removeCeLink(id, projectId);
+    setLinks(loadCeLinks(projectId));
     setMenuId(null);
     if (activeRecordId === id) {
       setActiveRecordId(null);
       setView('records');
     }
+  };
+
+  const openRelink = () => {
+    if (!activeRecord) return;
+    const link = links.find(item => item.ceId === activeRecord.id);
+    const linkedTarget = link ? ceLinkTarget(link) : null;
+    const targetExists =
+      !!linkedTarget && targetOptions.some(option => option.id === linkedTarget.id);
+    const nextTargetId = targetExists ? linkedTarget.id : targetOptions[0]?.id ?? '';
+    const nextTarget = targetOptions.find(option => option.id === nextTargetId);
+    const nextItems =
+      targetType === 'activity' && nextTarget?.itemIds?.length
+        ? ACTIVITY_ITEMS.filter(item => nextTarget.itemIds?.includes(item.id))
+        : targetItems;
+    setRelinkTargetId(nextTargetId);
+    setRelinkItemIds(
+      targetExists
+        ? (link?.itemIds ?? []).filter(id => nextItems.some(item => item.id === id))
+        : []
+    );
+    setRelinkOpen(true);
+  };
+
+  const toggleRelinkItem = (id: string) => {
+    setRelinkItemIds(prev =>
+      prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]
+    );
+  };
+
+  const saveRelink = () => {
+    if (!activeRecord) return;
+    const target = targetOptions.find(option => option.id === relinkTargetId);
+    const selectedIds = relinkItemIds.filter(id =>
+      relinkItems.some(item => item.id === id)
+    );
+    if (!target || !selectedIds.length) return;
+    const next = saveCeLink(
+      {
+        ceId: activeRecord.id,
+        ceCode: activeRecord.code,
+        ceName: activeRecord.name,
+        title: activeRecord.fields.title,
+        amount: 128500,
+        date: activeRecord.fields.date,
+        reference: activeRecord.fields.reference,
+        targetType,
+        targetId: target.id,
+        targetCode: target.code,
+        targetName: target.name,
+        bqId: targetType === 'bq' ? target.id : undefined,
+        bqCode: targetType === 'bq' ? target.code : undefined,
+        bqName: targetType === 'bq' ? target.name : undefined,
+        itemIds: selectedIds
+      },
+      projectId
+    );
+    setLinks(next);
+    setRelinkOpen(false);
   };
 
   const selectFlow = (flow: DocFlow) => {
@@ -291,33 +511,12 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
     onFlow(flow);
   };
 
-  const downloadOcr = () => {
-    if (!activeRecord) return;
-    const lines = [
-      `CE Number: ${activeRecord.fields.ceNumber}`,
-      `Date: ${activeRecord.fields.date}`,
-      `Reference: ${activeRecord.fields.reference}`,
-      `Amount: ${activeRecord.fields.amount}`,
-      '',
-      activeRecord.text,
-      '',
-      ...activeRecord.items.map(item => `${item.description} | ${item.qty} ${item.unit} | ${item.rate} | ${item.amount}`)
-    ];
-    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${activeRecord.code}-ocr.txt`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <main className="apc-docpage">
       <header className="apc-docpage__head">
         <div className="apc-docpage__title">
-          <h1>CE records</h1>
-          <span>Upload and OCR compensation event documents.</span>
+          <h1>Document Management</h1>
+          <span>Compensation Event records</span>
         </div>
         {view === 'records' && (
           <button className="apc-docpage__new" onClick={openImport}>
@@ -327,7 +526,7 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
         )}
       </header>
 
-      <FlowTabs activeFlow="ce" onSelect={selectFlow} />
+      <FlowTabs activeFlow="ce" onSelect={selectFlow} necOption={necOption} />
 
       <div className="apc-docpage__body">
         {view === 'result' && activeRecord ? (
@@ -343,9 +542,9 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
                     <Icon name="check" size={12} />
                     {activeRecord.confidence}% confidence
                   </span>
-                  <button className="apc-ce-download" onClick={downloadOcr}>
-                    <Icon name="download" size={13} />
-                    Download OCR
+                  <button className="apc-ce-download" onClick={openRelink}>
+                    <Icon name="file-text" size={13} />
+                    Relink
                   </button>
                 </div>
               </div>
@@ -369,9 +568,57 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
                   </p>
                   <p>
                     The assessed value of this compensation event is {activeRecord.fields.amount} and is to be
-                    incorporated into the Cleanse BQ CE column.
+                    incorporated into the Cleanse{' '}
+                    {activeTarget?.type === 'activity' ? 'Activity Schedule' : 'BQ'} CE column.
                   </p>
-                  <div className="apc-ce-paper__stamp">AI OCR</div>
+                  <div className="apc-ce-linked">
+                    <div className="apc-ce-linked__head">
+                      <b>
+                        Linked{' '}
+                        {activeTarget?.type === 'activity' ? 'Activity Schedule' : 'BQ'}
+                      </b>
+                      {activeTarget && <span>{activeTarget.code}</span>}
+                      <button className="apc-ce-linked__change" onClick={openRelink}>
+                        Change
+                      </button>
+                    </div>
+                    {activeLink && activeLinkItems.length ? (
+                      <>
+                        <div className="apc-ce-linked__target">
+                          {activeTarget?.code} · {activeTarget?.name}
+                        </div>
+                        <table className="apc-ce-linked__table">
+                          <thead>
+                            <tr>
+                              <th>Item</th>
+                              <th>Description</th>
+                              <th>Unit</th>
+                              <th className="num">Allocated (HK$)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {activeLinkItems.map(item => (
+                              <tr key={item.id}>
+                                <td className="mono">{item.no}</td>
+                                <td>{item.label}</td>
+                                <td>{item.unit || '—'}</td>
+                                <td className="num">
+                                  {activeAllocation.toLocaleString('en-HK', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                  })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>
+                    ) : (
+                      <div className="apc-ce-linked__empty">
+                        No linked items. Use Relink to choose items.
+                      </div>
+                    )}
+                  </div>
                 </section>
 
                 <section className="apc-ce-ocr">
@@ -497,7 +744,6 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
               <div className="apc-importpop__head">
                 <div>
                   <b>Import CE document</b>
-                  <span>Upload a compensation event document for AI OCR.</span>
                 </div>
                 <button className="apc-iconbtn" onClick={closeImport} aria-label="Close import">
                   <Icon name="x" size={15} />
@@ -550,10 +796,7 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
                     </div>
                   ) : (
                     <>
-                      <span className="apc-importcard__kind">CE</span>
-                      <span className="apc-cecard__emptyicon">
-                        <Icon name="file-text" size={28} />
-                      </span>
+                      <img className="apc-importcard__art" src="/import/ce.png" alt="" />
                       <b>Compensation Event document</b>
                       <span className="apc-importcard__copy">
                         Drag and drop your file here, or <strong>click to select</strong>.
@@ -568,8 +811,51 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
 
               <div className="apc-importpop__foot">
                 <span>{draft ? '1 CE document selected' : 'Upload one CE document to continue.'}</span>
-                <button className="apc-docpage__import" onClick={startProcessing}>
+                <button className="apc-docpage__import" onClick={goLinkTarget}>
                   Next Step
+                </button>
+              </div>
+            </section>
+          ) : phase === 'bq' ? (
+            <section
+              className="apc-ceimportpop"
+              role="dialog"
+              aria-label={`Link CE to ${targetLabel}`}
+            >
+              <div className="apc-importpop__head">
+                <div>
+                  <b>Link CE to {targetLabel}</b>
+                </div>
+                <button className="apc-iconbtn" onClick={closeImport} aria-label="Close link dialog">
+                  <Icon name="x" size={15} />
+                </button>
+              </div>
+              <div className="apc-ceimportpop__body">
+                <BqOptionPicker
+                  options={targetOptions}
+                  value={linkTargetId}
+                  onChange={chooseLinkTarget}
+                />
+                {error && <div className="apc-home__error">{error}</div>}
+              </div>
+              <div className="apc-importpop__foot">
+                <span>
+                  {linkTargetId
+                    ? `Linked to ${
+                        targetOptions.find(option => option.id === linkTargetId)?.code ??
+                        targetLabel
+                      }`
+                    : `Choose a ${targetLabel} record to continue.`}
+                </span>
+                <button className="apc-ce-back" onClick={() => setPhase('upload')}>
+                  Back
+                </button>
+                <button
+                  className="apc-docpage__import"
+                  disabled={!linkTargetId}
+                  onClick={startProcessing}
+                >
+                  Start OCR
                 </button>
               </div>
             </section>
@@ -585,6 +871,105 @@ export function CompensationEventPage({ onFlow }: { onFlow: (flow: DocFlow) => v
               ctaLabel="See AI OCR Result"
             />
           )}
+        </div>
+      )}
+
+      {relinkOpen && activeRecord && (
+        <div className="apc-docpage__scrim">
+          <section className="apc-ceimportpop apc-ce-relink" role="dialog" aria-label="Relink CE">
+            <div className="apc-importpop__head">
+              <div>
+                <b>Relink CE</b>
+                <span>{activeRecord.code}</span>
+              </div>
+              <button className="apc-iconbtn" onClick={() => setRelinkOpen(false)} aria-label="Close relink dialog">
+                <Icon name="x" size={15} />
+              </button>
+            </div>
+            <div className="apc-ceimportpop__body">
+              <div className="apc-ce-linklabel">{targetLabel}</div>
+              <BqOptionPicker
+                options={targetOptions}
+                value={relinkTargetId}
+                onChange={id => {
+                  setRelinkTargetId(id);
+                  setRelinkItemIds([]);
+                }}
+              />
+              <div className="apc-ce-itemselect__head">
+                <b>{targetLabel} items</b>
+                <span>{relinkItemIds.length} selected</span>
+                <button onClick={() => setRelinkItemIds(relinkItems.map(item => item.id))}>
+                  Select all
+                </button>
+                <button onClick={() => setRelinkItemIds([])}>Clear</button>
+              </div>
+              <div className="apc-ce-itemselect__scroll">
+                <table className="apc-ce-itemselect">
+                  <thead>
+                    <tr>
+                      <th />
+                      <th>Item</th>
+                      <th>Description</th>
+                      <th>Unit</th>
+                      <th className="num">Qty</th>
+                      <th className="num">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relinkItems.map(item => {
+                      const selected = relinkItemIds.includes(item.id);
+                      return (
+                        <tr
+                          key={item.id}
+                          className={selected ? 'on' : undefined}
+                          onClick={() => toggleRelinkItem(item.id)}
+                        >
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleRelinkItem(item.id)}
+                              onClick={event => event.stopPropagation()}
+                            />
+                          </td>
+                          <td className="mono">{item.no}</td>
+                          <td>{item.label}</td>
+                          <td>{item.unit || '—'}</td>
+                          <td className="num">{item.qty.toFixed(2)}</td>
+                          <td className="num">
+                            {item.rate == null
+                              ? '—'
+                              : item.rate.toLocaleString('en-HK', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2
+                                })}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="apc-importpop__foot">
+              <span>
+                {relinkTargetId && relinkItemIds.length
+                  ? `${relinkItemIds.length} ${targetLabel} items linked.`
+                  : `Select ${targetLabel} items to continue.`}
+              </span>
+              <button className="apc-ce-back" onClick={() => setRelinkOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="apc-docpage__import"
+                disabled={!relinkTargetId || !relinkItemIds.length}
+                onClick={saveRelink}
+              >
+                Save link
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </main>

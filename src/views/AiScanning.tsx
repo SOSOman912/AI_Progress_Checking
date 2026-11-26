@@ -11,7 +11,10 @@ import {
 } from 'react';
 import { Icon, type IconName } from '../components/Icon';
 import { Hint } from '../components/Hint';
+import { MappingResultPage } from './BimMapping';
 import { demoData, type ElementData } from '../lib/demo';
+import { buildMappingResult } from '../lib/mappingResult';
+import type { MappingScenario } from '../lib/mappingScenarios';
 import { mount as mountViewport, type ViewportApi } from '../three/viewport';
 import {
   loadScanAssets,
@@ -86,7 +89,25 @@ const SCAN_TYPES: Record<
   }
 };
 
-const IMPORT_ORDER: ScanAssetType[] = ['scan', 'drawing', 'bim'];
+const SCAN_TAB_ORDER: ScanAssetType[] = ['bim'];
+
+const SCAN_TAB_LABEL: Record<ScanAssetType, string> = {
+  bim: 'BIM models',
+  drawing: 'Drawings',
+  scan: 'Point clouds'
+};
+
+const SCAN_TAB_UNIT: Record<ScanAssetType, [string, string]> = {
+  bim: ['model', 'models'],
+  drawing: ['drawing', 'drawings'],
+  scan: ['point cloud', 'point clouds']
+};
+
+const SCAN_IMPORT_LABEL: Record<ScanAssetType, string> = {
+  bim: 'Import IFC',
+  drawing: 'Import IFC',
+  scan: 'Import Point Cloud'
+};
 
 const sizeLabel = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -533,26 +554,33 @@ function AssetCard({
   onFavorite: () => void;
   onOpen: () => void;
 }) {
+  const openable = isBim(asset);
   return (
     <article
-      className={`apc-scan-card apc-scan-card--${asset.type}`}
-      onClick={onOpen}
-      onKeyDown={event => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onOpen();
-        }
-      }}
-      role="button"
-      tabIndex={0}
+      className={`apc-scan-card apc-scan-card--${asset.type}${openable ? '' : ' is-reference'}`}
+      onClick={openable ? onOpen : undefined}
+      onKeyDown={
+        openable
+          ? event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onOpen();
+              }
+            }
+          : undefined
+      }
+      role={openable ? 'button' : undefined}
+      tabIndex={openable ? 0 : undefined}
     >
       <div className="apc-scan-card__preview">
         <AssetPreview asset={asset} />
         <TypeChip type={asset.type} />
-        <span className={`apc-scan__stage is-${asset.stage}`}>
-          <i />
-          {asset.stage === 'processing' ? 'Processing' : asset.stage === 'review' ? 'In review' : 'Cleanse'}
-        </span>
+        {openable && (
+          <span className={`apc-scan__stage is-${asset.stage}`}>
+            <i />
+            {asset.stage === 'processing' ? 'Processing' : asset.stage === 'review' ? 'In review' : 'Cleanse'}
+          </span>
+        )}
         <button
           className={`apc-scan-card__favorite${asset.favorite ? ' on' : ''}`}
           onClick={event => {
@@ -577,6 +605,13 @@ function AssetCard({
             onRemove={onRemove}
           />
         </div>
+
+        {!isBim(asset) && (
+          <div className="apc-scan-card__simplemeta">
+            <span title={asset.projectName}>{asset.projectName}</span>
+            <b>{sizeLabel(asset.size)}</b>
+          </div>
+        )}
 
         {isBim(asset) && (
           <>
@@ -695,7 +730,12 @@ function ResultTable({
   );
 }
 
-type ImportStep = 'ifc' | 'references';
+type ImportStep = 'ifc' | 'drawings' | 'programme' | 'pointcloud';
+
+interface ProgrammeFile {
+  name: string;
+  size: number;
+}
 
 interface ScanRun {
   id: string;
@@ -703,6 +743,8 @@ interface ScanRun {
   references: ScanAsset[];
   createdAt: number;
   model?: IfcModel;
+  programme?: ProgrammeFile;
+  pointCloud?: ProgrammeFile;
 }
 
 interface ProjectCoords {
@@ -735,6 +777,10 @@ const COORD_TOLERANCE = 0.05;
 const fCoord = (value: number) =>
   value.toLocaleString('en-HK', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const fDelta = (value: number) => `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(3)}`;
+const formatFileSize = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const toScanAsset = (file: DraftAsset): ScanAsset => ({
   id: file.id,
@@ -763,6 +809,146 @@ const hashString = (value: string) => {
   return hash;
 };
 
+
+function ProgrammeUploadCard({
+  programme,
+  onChange
+}: {
+  programme: ProgrammeFile | null;
+  onChange: (file: ProgrammeFile | null) => void;
+}) {
+  const pick = (file: File | null) => {
+    if (file) onChange({ name: file.name, size: file.size });
+  };
+  return (
+    <label
+      className={`apc-importcard${programme ? ' is-filled is-ready' : ''}`}
+      onDragOver={event => event.preventDefault()}
+      onDrop={(event: DragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        pick(event.dataTransfer.files?.[0] ?? null);
+      }}
+    >
+      <input
+        type="file"
+        accept=".xer,.xml,.xlsx,.xls,.pdf"
+        onChange={event => {
+          const file = event.target.files?.[0] ?? null;
+          event.target.value = '';
+          pick(file);
+        }}
+      />
+      {programme ? (
+        <div className="apc-importcard__loaded">
+          <span className="apc-importcard__kind">MP</span>
+          <button
+            className="apc-importcard__remove"
+            onClick={event => {
+              event.preventDefault();
+              event.stopPropagation();
+              onChange(null);
+            }}
+            aria-label="Remove master programme"
+          >
+            <Icon name="trash-2" size={14} />
+          </button>
+          <span className="apc-importcard__fileicon">
+            <Icon name="file-text" size={22} />
+          </span>
+          <b className="apc-importcard__filename" title={programme.name}>
+            {programme.name}
+          </b>
+          <span className="apc-importcard__filesize">
+            Master programme · {formatFileSize(programme.size)}
+          </span>
+          <span className="apc-importcard__status ready">
+            <Icon name="check" size={11} />
+            Uploaded
+          </span>
+        </div>
+      ) : (
+        <>
+          <img className="apc-importcard__art" src="/import/programme.svg" alt="" />
+          <b>Master programme</b>
+          <span className="apc-importcard__copy">
+            Drag and drop your file here, or <strong>click to select</strong>.
+          </span>
+          <small>Supported formats: P6 XER/XML, Excel or PDF</small>
+        </>
+      )}
+    </label>
+  );
+}
+
+function PointCloudUploadCard({
+  pointCloud,
+  onChange
+}: {
+  pointCloud: ProgrammeFile | null;
+  onChange: (file: ProgrammeFile | null) => void;
+}) {
+  const pick = (file: File | null) => {
+    if (file) onChange({ name: file.name, size: file.size });
+  };
+  return (
+    <label
+      className={`apc-importcard${pointCloud ? ' is-filled is-ready' : ''}`}
+      onDragOver={event => event.preventDefault()}
+      onDrop={(event: DragEvent<HTMLLabelElement>) => {
+        event.preventDefault();
+        pick(event.dataTransfer.files?.[0] ?? null);
+      }}
+    >
+      <input
+        type="file"
+        accept=".ply,.e57,.las,.laz,.xyz,.pts,.rcp"
+        onChange={event => {
+          const file = event.target.files?.[0] ?? null;
+          event.target.value = '';
+          pick(file);
+        }}
+      />
+      {pointCloud ? (
+        <div className="apc-importcard__loaded">
+          <span className="apc-importcard__kind">PC</span>
+          <button
+            className="apc-importcard__remove"
+            onClick={event => {
+              event.preventDefault();
+              event.stopPropagation();
+              onChange(null);
+            }}
+            aria-label="Remove point cloud"
+          >
+            <Icon name="trash-2" size={14} />
+          </button>
+          <span className="apc-importcard__fileicon">
+            <Icon name="box" size={22} />
+          </span>
+          <b className="apc-importcard__filename" title={pointCloud.name}>
+            {pointCloud.name}
+          </b>
+          <span className="apc-importcard__filesize">
+            Point cloud · {formatFileSize(pointCloud.size)}
+          </span>
+          <span className="apc-importcard__status ready">
+            <Icon name="check" size={11} />
+            Uploaded
+          </span>
+        </div>
+      ) : (
+        <>
+          <img className="apc-importcard__art" src="/import/scan-cloud.svg" alt="" />
+          <b>Point cloud</b>
+          <span className="apc-importcard__copy">
+            Drag and drop your file here, or <strong>click to select</strong>.
+          </span>
+          <small>Supported formats: PLY, E57, LAS/LAZ, XYZ, PTS or RCP</small>
+        </>
+      )}
+    </label>
+  );
+}
 
 function UploadTypeCard({
   type,
@@ -895,43 +1081,78 @@ function UploadTypeCard({
 }
 
 function ScanImportWizard({
+  type,
   step,
   projectName,
   projectNumber,
   draft,
+  programme,
+  pointCloud,
   onClose,
   onAddFiles,
   onRemoveFile,
+  onProgramme,
+  onPointCloud,
   onNext,
   onBack,
-  onProcess
+  onProcess,
+  onConfirm
 }: {
+  type: ScanAssetType;
   step: ImportStep;
   projectName: string;
   projectNumber: string;
   draft: DraftAsset[];
+  programme: ProgrammeFile | null;
+  pointCloud: ProgrammeFile | null;
   onClose: () => void;
   onAddFiles: (type: ScanAssetType, event: ChangeEvent<HTMLInputElement>) => void;
   onRemoveFile: (id: string) => void;
+  onProgramme: (file: ProgrammeFile | null) => void;
+  onPointCloud: (file: ProgrammeFile | null) => void;
   onNext: () => void;
   onBack: () => void;
   onProcess: () => void;
+  onConfirm: () => void;
 }) {
-  const uploading = draft.some(file => file.status === 'uploading');
+  const pointCloudOnly = type === 'scan';
   const bimFiles = draft.filter(file => file.type === 'bim');
-  const referenceFiles = draft.filter(file => file.type !== 'bim');
+  const drawingFiles = draft.filter(file => file.type === 'drawing');
+  const activeFiles = pointCloudOnly ? draft.filter(file => file.type === 'scan') : step === 'ifc' ? bimFiles : drawingFiles;
+  const uploading = activeFiles.some(file => file.status === 'uploading');
+  const ready = activeFiles.filter(file => file.status === 'ready');
   const bimReady = bimFiles.length > 0 && bimFiles.every(file => file.status === 'ready');
 
   return (
     <div className="apc-docpage__scrim">
-      <section className="apc-importpop" role="dialog" aria-label="AI scanning import">
+      <section
+        className="apc-importpop"
+        role="dialog"
+        aria-label={pointCloudOnly ? 'Import point cloud' : 'Import IFC model'}
+      >
         <div className="apc-importpop__head">
           <div>
-            <b>{step === 'ifc' ? 'Import IFC model' : 'Add reference files'}</b>
+            <b>
+              {pointCloudOnly
+                ? 'Import point cloud'
+                : step === 'ifc'
+                  ? 'Import IFC model'
+                  : step === 'drawings'
+                    ? 'Add drawings'
+                    : step === 'programme'
+                      ? 'Add master programme'
+                      : 'Add point cloud'}
+            </b>
             <span>
-              {step === 'ifc'
-                ? `Step 1 of 2 · Add the BIM model for ${projectName} (${projectNumber}).`
-                : 'Step 2 of 2 · Drawing and point cloud are optional references for progress verification.'}
+              {pointCloudOnly
+                ? `Add a point cloud for ${projectName} (${projectNumber}).`
+                : step === 'ifc'
+                  ? `Step 1 of 4 · Add the IFC model for ${projectName} (${projectNumber}).`
+                  : step === 'drawings'
+                    ? 'Step 2 of 4 · Drawings are optional references that travel with this model.'
+                    : step === 'programme'
+                      ? 'Step 3 of 4 · Master programme is optional for progress checking.'
+                      : 'Step 4 of 4 · Point cloud is optional for progress verification.'}
             </span>
           </div>
           <button className="apc-iconbtn" onClick={onClose} aria-label="Close import">
@@ -940,43 +1161,67 @@ function ScanImportWizard({
         </div>
 
         <div className="apc-importpop__scroll">
-          <div className={`apc-importgrid${step === 'ifc' ? ' is-one' : ''}`}>
-            {(step === 'ifc' ? (['bim'] as ScanAssetType[]) : (['drawing', 'scan'] as ScanAssetType[])).map(type => (
+          {!pointCloudOnly && step === 'programme' ? (
+            <div className="apc-importgrid is-one">
+              <ProgrammeUploadCard programme={programme} onChange={onProgramme} />
+            </div>
+          ) : !pointCloudOnly && step === 'pointcloud' ? (
+            <div className="apc-importgrid is-one">
+              <PointCloudUploadCard pointCloud={pointCloud} onChange={onPointCloud} />
+            </div>
+          ) : (
+            <div className="apc-importgrid is-one">
               <UploadTypeCard
-                key={type}
-                type={type}
+                type={pointCloudOnly ? 'scan' : step === 'ifc' ? 'bim' : 'drawing'}
                 draft={draft}
                 onAddFiles={onAddFiles}
                 onRemoveFile={onRemoveFile}
               />
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="apc-importpop__foot">
           <span>
-            {step === 'ifc'
-              ? !bimFiles.length
-                ? 'Upload one IFC model to continue.'
-                : uploading
-                  ? 'Uploading IFC model…'
-                  : `${bimFiles.length} ${bimFiles.length === 1 ? 'IFC model' : 'IFC models'} imported.`
-              : referenceFiles.length
-                ? `${referenceFiles.length} optional ${referenceFiles.length === 1 ? 'reference' : 'references'} selected.`
-                : 'References are optional. You can start processing now.'}
+            {!pointCloudOnly && step === 'programme'
+              ? programme
+                ? 'Master programme attached.'
+                : 'Master programme is optional.'
+              : !pointCloudOnly && step === 'pointcloud'
+                ? pointCloud
+                  ? 'Point cloud attached.'
+                  : 'Point cloud is optional.'
+                : !activeFiles.length
+                  ? pointCloudOnly
+                    ? 'Select a point cloud to continue.'
+                    : step === 'ifc'
+                      ? 'Upload one IFC model to continue.'
+                      : 'Drawings are optional.'
+                  : uploading
+                    ? 'Uploading…'
+                    : `${ready.length} ${ready.length === 1 ? 'file' : 'files'} ready.`}
           </span>
-          {step === 'references' && (
-            <button className="apc-scan-import__backlink" onClick={onBack}>
-              Back
+          {!pointCloudOnly &&
+            (step === 'drawings' || step === 'programme' || step === 'pointcloud') && (
+              <button className="apc-scan-import__backlink" onClick={onBack}>
+                Back
+              </button>
+            )}
+          {pointCloudOnly ? (
+            <button className="apc-docpage__import" disabled={!ready.length || uploading} onClick={onConfirm}>
+              Add to Library
             </button>
-          )}
-          {step === 'ifc' ? (
+          ) : step === 'ifc' ? (
             <button className="apc-docpage__import" disabled={!bimReady || uploading} onClick={onNext}>
               Next Step
             </button>
-          ) : (
+          ) : step === 'pointcloud' ? (
             <button className="apc-docpage__import" disabled={uploading} onClick={onProcess}>
               Start Processing
+            </button>
+          ) : (
+            <button className="apc-docpage__import" disabled={uploading} onClick={onNext}>
+              Next Step
             </button>
           )}
         </div>
@@ -1253,7 +1498,7 @@ function CleanseComplete({ count, onClose }: { count: number; onClose: () => voi
   );
 }
 
-function ScanReviewPage({
+export function ScanReviewPage({
   run,
   apiOnline,
   onBack,
@@ -2068,11 +2313,7 @@ function ScanReviewPage({
                   <th>Element</th>
                   <th>IFC class</th>
                   <th>Storey / zone</th>
-                  <th>Material</th>
                   <th>Qty</th>
-                  <th>Status</th>
-                  <th>Issue</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -2080,7 +2321,7 @@ function ScanReviewPage({
                   <Fragment key={row.el.id}>
                     <tr
                       id={`scan-element-${row.el.id}`}
-                      className={`apc-bqtable__item${row.status === 'Needs rework' ? ' is-fail' : ''}${selectedId === row.el.id ? ' on' : ''}`}
+                      className={`apc-bqtable__item${selectedId === row.el.id ? ' on' : ''}`}
                       onClick={() => pickElement(row.el.id)}
                     >
                       <td>
@@ -2090,99 +2331,11 @@ function ScanReviewPage({
                       <td>
                         {row.storey} / {row.el.zone ?? '—'}
                       </td>
-                      <td
-                        className="apc-scan-elements__mat"
-                        title="Double-click to edit material"
-                        onDoubleClick={event => {
-                          event.stopPropagation();
-                          startMaterialEdit(row);
-                        }}
-                      >
-                        {materialEditId === row.el.id ? (
-                          <input
-                            className="apc-scan-elements__matinput"
-                            autoFocus
-                            value={materialDraft}
-                            onChange={event => setMaterialDraft(event.target.value)}
-                            onClick={event => event.stopPropagation()}
-                            onDoubleClick={event => event.stopPropagation()}
-                            onBlur={() => commitMaterialEdit(row.el.id)}
-                            onKeyDown={event => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                event.currentTarget.blur();
-                              }
-                              if (event.key === 'Escape') {
-                                materialCancel.current = true;
-                                event.currentTarget.blur();
-                              }
-                            }}
-                          />
-                        ) : (
-                          row.material || '—'
-                        )}
-                      </td>
                       <td className="num">{row.quantity}</td>
-                      <td>
-                        <span className={`apc-scan-elementstatus is-${row.status === 'Compliant' ? 'pass' : 'fail'}`}>
-                          {row.status}
-                        </span>
-                      </td>
-                      <td>{row.issue ? (row.resolved ? `Resolved · ${row.issue}` : row.issue) : '—'}</td>
-                      <td>
-                        {row.issue ? (
-                          <button
-                            className="apc-scan-elements__edit"
-                            onClick={event => {
-                              event.stopPropagation();
-                              startEdit(row);
-                            }}
-                          >
-                            Edit
-                          </button>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
                     </tr>
-                    {editingId === row.el.id && (
-                      <tr className="apc-scan-elements__editorrow">
-                        <td colSpan={8}>
-                          <div className="apc-scan-elements__editor">
-                            <label>
-                              <span>Storey</span>
-                              <input
-                                value={editForm.storey}
-                                onChange={event => setEditForm(prev => ({ ...prev, storey: event.target.value }))}
-                              />
-                            </label>
-                            <label>
-                              <span>Material</span>
-                              <input
-                                value={editForm.material}
-                                onChange={event => setEditForm(prev => ({ ...prev, material: event.target.value }))}
-                              />
-                            </label>
-                            <label>
-                              <span>Quantity</span>
-                              <input
-                                value={editForm.quantity}
-                                onChange={event => setEditForm(prev => ({ ...prev, quantity: event.target.value }))}
-                              />
-                            </label>
-                            <button className="apc-scan-elements__save" onClick={saveEdit}>
-                              Save &amp; mark compliant
-                            </button>
-                            <button className="apc-scan-elements__cancel" onClick={() => setEditingId(null)}>
-                              Cancel
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                     {selectedId === row.el.id && (
                       <tr className="apc-scan-elements__proprow">
-                        <td colSpan={8}>
+                        <td colSpan={4}>
                           <div className="apc-scan-elements__props">
                             <span>IFC properties</span>
                             {Object.entries(row.el.pset)
@@ -2205,7 +2358,7 @@ function ScanReviewPage({
                 ))}
                 {!shownRows.length && (
                   <tr>
-                    <td colSpan={8} className="apc-scan-elements__empty">
+                    <td colSpan={4} className="apc-scan-elements__empty">
                       No BIM elements match this filter.
                     </td>
                   </tr>
@@ -2238,18 +2391,32 @@ function ScanReviewPage({
 
 export function AiScanning({
   projectName,
-  projectNumber
+  projectNumber,
+  showProgramme,
+  onCloseProgramme,
+  onToggleProgramme,
+  projectId
 }: {
   projectName: string;
   projectNumber: string;
+  showProgramme: boolean;
+  onCloseProgramme: () => void;
+  onToggleProgramme: () => void;
+  projectId?: string;
 }) {
-  const [assets, setAssets] = useState<ScanAsset[]>(loadScanAssets);
+  const [assets, setAssets] = useState<ScanAsset[]>(() =>
+    loadScanAssets(projectId)
+  );
   const [runs, setRuns] = useState<Record<string, ScanRun>>({});
   const [view, setView] = useState<ViewMode>('grid');
   const [query, setQuery] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [activeType, setActiveType] = useState<ScanAssetType>('bim');
   const [importOpen, setImportOpen] = useState(false);
+  const [importType, setImportType] = useState<ScanAssetType>('bim');
   const [importStep, setImportStep] = useState<ImportStep>('ifc');
+  const [programmeDraft, setProgrammeDraft] = useState<ProgrammeFile | null>(null);
+  const [pointCloudDraft, setPointCloudDraft] = useState<ProgrammeFile | null>(null);
   const [draft, setDraft] = useState<DraftAsset[]>([]);
   const [processingOpen, setProcessingOpen] = useState(false);
   const [processingPct, setProcessingPct] = useState(0);
@@ -2258,13 +2425,20 @@ export function AiScanning({
   const [run, setRun] = useState<ScanRun | null>(null);
   const [page, setPage] = useState<'library' | 'result'>('library');
   const [apiOnline, setApiOnline] = useState(false);
+  const [notice, setNotice] = useState('');
   const draftCount = useRef(0);
   const processingDone = useRef(false);
   const finishTimer = useRef<number>();
 
   useEffect(() => {
-    saveScanAssets(assets);
+    saveScanAssets(assets, projectId);
   }, [assets]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 2400);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     let alive = true;
@@ -2335,21 +2509,30 @@ export function AiScanning({
       processingDone.current = true;
       if (localTimer) window.clearInterval(localTimer);
       if (pollTimer) window.clearInterval(pollTimer);
+      const drawingAssets = files.filter(asset => asset.type === 'drawing');
       const nextRun: ScanRun = {
         id: `run-${Date.now()}`,
         primary,
-        references: files.filter(asset => asset.type !== 'bim'),
+        references: drawingAssets,
         createdAt: Date.now(),
-        model
+        model,
+        programme: programmeDraft ?? undefined,
+        pointCloud: pointCloudDraft ?? undefined
       };
-      setAssets(prev => [...bimAssets, ...prev]);
+      setAssets(prev => [...bimAssets, ...drawingAssets, ...prev]);
       setRuns(prev => ({ ...prev, [primary.id]: nextRun }));
       setRun(nextRun);
       setProcessingOpen(false);
       setProcessingPct(0);
       setProcessingPhase(null);
       setDraft([]);
+      setProgrammeDraft(null);
       setPage('result');
+      if (apiOnline) {
+        [...bimAssets, ...drawingAssets].forEach(asset => {
+          void saveScanAsset(asset).catch(() => undefined);
+        });
+      }
       if (model && apiOnline) {
         void upsertIfcModel({
           id: model.id,
@@ -2357,9 +2540,6 @@ export function AiScanning({
           meta: model.meta,
           elements: model.elements
         }).catch(() => undefined);
-        bimAssets.forEach(asset => {
-          void saveScanAsset(asset).catch(() => undefined);
-        });
       }
     };
 
@@ -2465,10 +2645,19 @@ export function AiScanning({
     []
   );
 
+  const typeCounts = useMemo(
+    () => ({
+      bim: assets.filter(asset => asset.type === 'bim').length,
+      drawing: assets.filter(asset => asset.type === 'drawing').length,
+      scan: assets.filter(asset => asset.type === 'scan').length
+    }),
+    [assets]
+  );
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return assets
-      .filter(asset => asset.type === 'bim')
+      .filter(asset => asset.type === activeType)
       .filter(asset => {
         if (!needle) return true;
         return [
@@ -2480,7 +2669,7 @@ export function AiScanning({
           asset.position
         ].some(value => value.toLowerCase().includes(needle));
       });
-  }, [assets, query]);
+  }, [assets, query, activeType]);
 
   const toggleFavorite = (id: string) => {
     const target = assets.find(asset => asset.id === id);
@@ -2496,9 +2685,11 @@ export function AiScanning({
     if (apiOnline) void deleteScanAsset(id).catch(() => undefined);
   };
 
-  const openImport = () => {
+  const openImport = (type: ScanAssetType = activeType) => {
     setDraft([]);
+    setImportType(type === 'scan' ? 'scan' : 'bim');
     setImportStep('ifc');
+    setPointCloudDraft(null);
     draftCount.current = 0;
     setImportOpen(true);
   };
@@ -2506,6 +2697,7 @@ export function AiScanning({
   const closeImport = () => {
     setImportOpen(false);
     setDraft([]);
+    setPointCloudDraft(null);
   };
 
   const addFiles = (type: ScanAssetType, event: ChangeEvent<HTMLInputElement>) => {
@@ -2546,7 +2738,30 @@ export function AiScanning({
     setProcessingOpen(true);
   };
 
+  const confirmImport = () => {
+    if (importType === 'bim') {
+      startProcessing();
+      return;
+    }
+    const ready = draft
+      .filter(file => file.type === importType && file.status === 'ready')
+      .map(toScanAsset);
+    if (!ready.length) return;
+    setAssets(prev => [...ready, ...prev]);
+    if (apiOnline) {
+      ready.forEach(asset => {
+        void saveScanAsset(asset).catch(() => undefined);
+      });
+    }
+    setImportOpen(false);
+    setDraft([]);
+    setNotice(
+      `${ready.length} ${SCAN_TAB_UNIT[importType][ready.length === 1 ? 0 : 1]} added to the library.`
+    );
+  };
+
   const openAsset = (asset: ScanAsset) => {
+    if (asset.type !== 'bim') return;
     const nextStage: ScanStage = asset.stage === 'cleanse' ? 'cleanse' : 'review';
     setAssets(prev =>
       prev.map(item => (item.id === asset.id ? { ...item, stage: nextStage } : item))
@@ -2594,26 +2809,39 @@ export function AiScanning({
     setPage('result');
   };
 
-  const capturePreview = (assetId: string, dataUrl: string) => {
-    setAssets(prev =>
-      prev.map(asset => (asset.id === assetId ? { ...asset, thumbnail: dataUrl } : asset))
-    );
-    if (apiOnline) void patchScanAsset(assetId, { thumbnail: dataUrl }).catch(() => undefined);
-  };
-
   if (page === 'result' && run) {
+    const scanElements = run.model?.elements ?? demoData.elements;
+    const pointCloudAsset = assets.find(asset => asset.type === 'scan');
+    const scanScenario: MappingScenario = {
+      id: run.id,
+      name: run.primary.name,
+      type: 'hybrid',
+      projectName: run.primary.projectName,
+      projectNumber: run.primary.projectNumber,
+      modelName: run.primary.name,
+      standard: 'HKSMM4',
+      elementCount: scanElements.length,
+      smmItemCount: 1240,
+      mappedCount: scanElements.length,
+      status: 'complete',
+      sources: {
+        bim: run.primary.name,
+        pointCloud:
+          pointCloudAsset?.name ??
+          run.references.find(reference => reference.type === 'scan')?.name,
+        programme: run.programme?.name
+      },
+      createdAt: run.createdAt,
+      updatedAt: Date.now()
+    };
+    const scanResult = buildMappingResult(scanScenario, scanElements, !!run.programme);
     return (
-      <ScanReviewPage
-        run={run}
-        apiOnline={apiOnline}
+      <MappingResultPage
+        run={{ scenario: scanScenario, result: scanResult }}
         onBack={() => setPage('library')}
-        onCapturePreview={capturePreview}
-        onCleanse={() => {
-          setAssets(prev =>
-            prev.map(asset => (asset.id === run.primary.id ? { ...asset, stage: 'cleanse' } : asset))
-          );
-          if (apiOnline) void cleanseScanAsset(run.primary.id).catch(() => undefined);
-        }}
+        showProgramme={showProgramme}
+        onCloseProgramme={onCloseProgramme}
+        onToggleProgramme={onToggleProgramme}
       />
     );
   }
@@ -2623,21 +2851,40 @@ export function AiScanning({
       <header className="apc-docpage__head">
         <div className="apc-docpage__title">
           <h1>AI Scanning</h1>
-          <span>Import an IFC model, check AI readiness and produce a cleanse BIM model for QS review.</span>
+          <span>BIM models</span>
         </div>
-        <button className="apc-docpage__new" onClick={openImport}>
+        <button className="apc-docpage__new" onClick={() => openImport(activeType)}>
           <span aria-hidden>+</span>
-          Import IFC
+          {SCAN_IMPORT_LABEL[activeType]}
         </button>
       </header>
 
       <div className="apc-scan__body">
         <div className="apc-scan__inner">
+          <div className="apc-scan__tabs" role="tablist" aria-label="Uploaded file types">
+            {SCAN_TAB_ORDER.map(type => (
+              <button
+                key={type}
+                role="tab"
+                aria-selected={activeType === type}
+                className={`apc-scan__tab${activeType === type ? ' on' : ''}`}
+                onClick={() => {
+                  setActiveType(type);
+                  setQuery('');
+                }}
+              >
+                <Icon name={SCAN_TYPES[type].icon} size={13} />
+                {SCAN_TAB_LABEL[type]}
+                <b>{typeCounts[type]}</b>
+              </button>
+            ))}
+          </div>
+
           <div className="apc-scan__summary">
             <div>
-              <b>BIM models</b>
+              <b>{SCAN_TAB_LABEL[activeType]}</b>
               <span>
-                {filtered.length} {filtered.length === 1 ? 'model' : 'models'}
+                {filtered.length} {SCAN_TAB_UNIT[activeType][filtered.length === 1 ? 0 : 1]}
               </span>
             </div>
             <div className="apc-scan__tools">
@@ -2646,7 +2893,7 @@ export function AiScanning({
                 <input
                   value={query}
                   onChange={event => setQuery(event.target.value)}
-                  placeholder="Search BIM models..."
+                  placeholder={`Search ${SCAN_TAB_LABEL[activeType].toLowerCase()}...`}
                 />
                 {query && (
                   <button className="apc-scan__searchclear" onClick={() => setQuery('')} aria-label="Clear search">
@@ -2678,18 +2925,18 @@ export function AiScanning({
           {filtered.length === 0 ? (
             <div className="apc-scan__empty">
               <span>
-                <Icon name="box" size={24} />
+                <Icon name={SCAN_TYPES[activeType].icon} size={24} />
               </span>
-              <b>{query ? 'No matching BIM models' : 'No BIM models yet'}</b>
-              <p>
+              <b>
                 {query
-                  ? 'Try a different file name, project or uploader.'
-                  : 'Import an IFC model to start the scanning workflow.'}
-              </p>
+                  ? `No matching ${SCAN_TAB_UNIT[activeType][1]}`
+                  : `No ${SCAN_TAB_UNIT[activeType][1]} yet`}
+              </b>
+              <p>{query ? 'No matching file.' : 'No files uploaded.'}</p>
               {!query && (
-                <button onClick={openImport}>
+                <button onClick={() => openImport(activeType)}>
                   <span aria-hidden>+</span>
-                  Import IFC
+                  {SCAN_IMPORT_LABEL[activeType]}
                 </button>
               )}
             </div>
@@ -2722,16 +2969,38 @@ export function AiScanning({
 
       {importOpen && (
         <ScanImportWizard
+          type={importType}
           step={importStep}
           projectName={projectName}
           projectNumber={projectNumber}
           draft={draft}
+          programme={programmeDraft}
+          pointCloud={pointCloudDraft}
           onClose={closeImport}
           onAddFiles={addFiles}
           onRemoveFile={id => setDraft(prev => prev.filter(file => file.id !== id))}
-          onNext={() => setImportStep('references')}
-          onBack={() => setImportStep('ifc')}
+          onProgramme={setProgrammeDraft}
+          onPointCloud={setPointCloudDraft}
+          onNext={() =>
+            setImportStep(current =>
+              current === 'ifc'
+                ? 'drawings'
+                : current === 'drawings'
+                  ? 'programme'
+                  : 'pointcloud'
+            )
+          }
+          onBack={() =>
+            setImportStep(current =>
+              current === 'pointcloud'
+                ? 'programme'
+                : current === 'programme'
+                  ? 'drawings'
+                  : 'ifc'
+            )
+          }
           onProcess={startProcessing}
+          onConfirm={confirmImport}
         />
       )}
 
@@ -2745,6 +3014,8 @@ export function AiScanning({
           title={processingPhase ? 'Reading IFC model' : undefined}
         />
       )}
+
+      {notice && <div className="apc-scan__toast">{notice}</div>}
     </main>
   );
 }

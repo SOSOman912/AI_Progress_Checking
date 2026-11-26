@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent }
 import { Icon, type IconName } from './Icon';
 import { Hint } from './Hint';
 
-export type ToolId = 'library' | 'model' | 'mapping' | 'data' | 'bill' | 'review';
+export type ToolId = 'library' | 'mapping' | 'data' | 'bill' | 'review';
 export type DocTool = 'pricing' | 'invoice';
 export type ModalId = 'files' | 'views' | 'settings' | null;
 
@@ -10,9 +10,8 @@ const TOOLS: Array<{ id: ToolId; icon: IconName; hint: string }> = [
   { id: 'bill', icon: 'file-spreadsheet', hint: '01 Document Management' },
   { id: 'library', icon: 'pencil-ruler', hint: '02 Measurement Library' },
   { id: 'data', icon: 'clipboard-check', hint: '03 AI Scanning' },
-  { id: 'mapping', icon: 'list-tree', hint: '04 BIM to SMM Mapping' },
-  { id: 'model', icon: 'box', hint: '05 QS Checking' },
-  { id: 'review', icon: 'badge-check', hint: '06 eCheck Payment' }
+  { id: 'mapping', icon: 'list-tree', hint: '04 Mapping Model' },
+  { id: 'review', icon: 'badge-check', hint: '05 eCheck Payment' }
 ];
 
 type MenuNode =
@@ -113,11 +112,11 @@ export function ToolRail({
   onDocTool: (tool: DocTool) => void;
   onHome: () => void;
   sections: Record<'browser' | 'tools' | 'bqlist' | 'pano', boolean>;
-  windows: Record<'badge' | 'props' | 'bqDetails' | 'drawing', boolean>;
+  windows: Record<'badge' | 'props' | 'bqDetails' | 'drawing' | 'programme', boolean>;
   onTool: (tool: ToolId) => void;
   onModal: (modal: ModalId) => void;
   onToggleSection: (key: 'browser' | 'tools' | 'bqlist' | 'pano') => void;
-  onToggleWindow: (key: 'badge' | 'props' | 'bqDetails' | 'drawing') => void;
+  onToggleWindow: (key: 'badge' | 'props' | 'bqDetails' | 'drawing' | 'programme') => void;
   onExport: () => void;
 }) {
   const [logoOpen, setLogoOpen] = useState(false);
@@ -204,6 +203,13 @@ export function ToolRail({
           checked: windows.drawing,
           keepOpen: true,
           onSelect: () => onToggleWindow('drawing')
+        },
+        {
+          label: 'Master programme',
+          checked: windows.programme,
+          keepOpen: true,
+          disabled: tool !== 'data',
+          onSelect: () => onToggleWindow('programme')
         },
         { sep: true },
         {

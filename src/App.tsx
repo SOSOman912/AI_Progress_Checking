@@ -7,10 +7,10 @@ import {
   ViewsPanel,
   type Sections
 } from './components/Panels';
-import { ModelView } from './views/ModelView';
 import { MeasurementLibrary } from './views/MeasurementLibrary';
 import { DocumentManagement } from './views/DocumentManagement';
 import { AiScanning } from './views/AiScanning';
+import { BimMapping } from './views/BimMapping';
 import { ProjectHome, type NewProjectInput } from './views/ProjectHome';
 import { demoData, type ProjectData } from './lib/demo';
 import { loadPermissions, withMoneyPermission } from './lib/permissions';
@@ -18,11 +18,13 @@ import { loadProjects, saveProjects, type ProjectRecord } from './lib/projects';
 
 type AppRoute = 'home' | ToolId;
 
-const ROUTES: ToolId[] = ['library', 'model', 'mapping', 'data', 'bill', 'review'];
+const ACTIVE_PROJECT_KEY = 'apc.active-project.v1';
+const ROUTES: ToolId[] = ['library', 'mapping', 'data', 'bill', 'review'];
 
 function readRoute(): AppRoute {
   const hash = window.location.hash.replace(/^#\/?/, '');
   if (!hash || hash === 'home') return 'home';
+  if (hash === 'model') return 'mapping';
   return ROUTES.includes(hash as ToolId) ? (hash as ToolId) : 'home';
 }
 
@@ -30,6 +32,14 @@ export default function App() {
   const [permissions] = useState(loadPermissions);
   const [data, setData] = useState<ProjectData>(() => withMoneyPermission(demoData, permissions.canViewMoney));
   const [projects, setProjects] = useState<ProjectRecord[]>(loadProjects);
+  const [activeProject, setActiveProject] = useState<ProjectRecord | null>(() => {
+    try {
+      const id = window.localStorage.getItem(ACTIVE_PROJECT_KEY);
+      return id ? projects.find(project => project.id === id) ?? null : null;
+    } catch {
+      return null;
+    }
+  });
   const [route, setRoute] = useState<AppRoute>(readRoute);
   const [docTool, setDocTool] = useState<DocTool>('pricing');
   const [docHomeKey, setDocHomeKey] = useState(0);
@@ -44,6 +54,7 @@ export default function App() {
   });
   const [badgeOpen, setBadgeOpen] = useState(false);
   const [propsOpen, setPropsOpen] = useState(true);
+  const [programmeView, setProgrammeView] = useState(true);
   const [drawingSheet, setDrawingSheet] = useState<string | null>(null);
   const [lastDrawing, setLastDrawing] = useState<string | null>(null);
   const [infoLine, setInfoLine] = useState<string | null>(null);
@@ -58,6 +69,18 @@ export default function App() {
   useEffect(() => {
     saveProjects(projects);
   }, [projects]);
+
+  useEffect(() => {
+    try {
+      if (activeProject) {
+        window.localStorage.setItem(ACTIVE_PROJECT_KEY, activeProject.id);
+      } else {
+        window.localStorage.removeItem(ACTIVE_PROJECT_KEY);
+      }
+    } catch {
+      return;
+    }
+  }, [activeProject]);
 
   const go = (next: ToolId) => {
     setModal(null);
@@ -83,6 +106,7 @@ export default function App() {
   };
 
   const openProject = (project: ProjectRecord) => {
+    setActiveProject(project);
     setData(current => ({
       ...current,
       project: {
@@ -99,7 +123,7 @@ export default function App() {
 
   const toggle = (key: keyof Sections) => setSections(s => ({ ...s, [key]: !s[key] }));
 
-  const toggleWindow = (key: 'badge' | 'props' | 'bqDetails' | 'drawing') => {
+  const toggleWindow = (key: 'badge' | 'props' | 'bqDetails' | 'drawing' | 'programme') => {
     if (key === 'badge') setBadgeOpen(v => !v);
     if (key === 'props') setPropsOpen(v => !v);
     if (key === 'bqDetails') {
@@ -110,6 +134,7 @@ export default function App() {
       }
     }
     if (key === 'drawing') setDrawingSheet(v => (v ? null : lastDrawing));
+    if (key === 'programme') setProgrammeView(v => !v);
   };
 
   const openDrawing = (id: string) => {
@@ -119,12 +144,12 @@ export default function App() {
 
   const showBadge = () => {
     setModal(null);
-    go('model');
+    go('mapping');
     setBadgeOpen(true);
   };
   const showProps = () => {
     setModal(null);
-    go('model');
+    go('mapping');
     setPropsOpen(true);
   };
 
@@ -192,7 +217,8 @@ export default function App() {
           badge: badgeOpen,
           props: propsOpen,
           bqDetails: !!infoLine && sections.bqlist,
-          drawing: !!drawingSheet
+          drawing: !!drawingSheet,
+          programme: programmeView
         }}
         onExport={exportBill}
         docTool={docTool}
@@ -205,40 +231,66 @@ export default function App() {
 
       <div className="apc-main">
         {route === 'library' ? (
-          <MeasurementLibrary />
-        ) : route === 'model' ? (
-          <div className="apc-body">
-            <ModelView
-              data={data}
-              active={active}
-              setActive={setActive}
-              activeLine={activeLine}
-              setActiveLine={setActiveLine}
-              showBrowser={sections.browser}
-              onCloseBrowser={() => toggle('browser')}
-              showTools={sections.tools}
-              showBqList={sections.bqlist}
-              onHideBqList={() => toggle('bqlist')}
-              showBadge={badgeOpen}
-              onCloseBadge={() => setBadgeOpen(false)}
-              showProps={propsOpen}
-              onCloseProps={() => setPropsOpen(false)}
-              infoLine={infoLine}
-              setInfoLine={setInfoLine}
-              showPano={sections.pano}
-              onShowProps={() => setPropsOpen(true)}
-              drawingSheet={drawingSheet}
-              onOpenDrawing={openDrawing}
-              onCloseDrawing={() => setDrawingSheet(null)}
-              onQtyChange={editQty}
-              onRateChange={editRate}
-              showMoney={permissions.canViewMoney}
-            />
-          </div>
+          <MeasurementLibrary
+            key={`library-${activeProject?.id ?? 'unassigned'}`}
+            projectId={activeProject?.id}
+          />
         ) : route === 'bill' ? (
-          <DocumentManagement key={docHomeKey} mode={docTool} />
+          <DocumentManagement
+            key={`${docHomeKey}-${activeProject?.id ?? 'unassigned'}`}
+            mode={docTool}
+            necOption={activeProject?.necOption}
+            standard={activeProject?.standard}
+            projectId={activeProject?.id}
+          />
         ) : route === 'data' ? (
-          <AiScanning projectName={data.project.name} projectNumber={data.project.contract} />
+          <AiScanning
+            key={`data-${activeProject?.id ?? 'unassigned'}`}
+            projectName={data.project.name}
+            projectNumber={data.project.contract}
+            projectId={activeProject?.id}
+            showProgramme={programmeView}
+            onCloseProgramme={() => setProgrammeView(false)}
+            onToggleProgramme={() => setProgrammeView(value => !value)}
+          />
+        ) : route === 'mapping' ? (
+          <BimMapping
+            key={`mapping-${activeProject?.id ?? 'unassigned'}`}
+            projectName={data.project.name}
+            projectNumber={data.project.contract}
+            standard={data.project.standard}
+            projectId={activeProject?.id}
+            showProgramme={programmeView}
+            onCloseProgramme={() => setProgrammeView(false)}
+            onToggleProgramme={() => setProgrammeView(value => !value)}
+            necOption={activeProject?.necOption}
+            modelView={{
+              data,
+              active,
+              setActive,
+              activeLine,
+              setActiveLine,
+              showBrowser: sections.browser,
+              onCloseBrowser: () => toggle('browser'),
+              showTools: sections.tools,
+              showBqList: sections.bqlist,
+              onHideBqList: () => toggle('bqlist'),
+              showBadge: badgeOpen,
+              onCloseBadge: () => setBadgeOpen(false),
+              showProps: propsOpen,
+              onCloseProps: () => setPropsOpen(false),
+              infoLine,
+              setInfoLine,
+              showPano: sections.pano,
+              onShowProps: () => setPropsOpen(true),
+              drawingSheet,
+              onOpenDrawing: openDrawing,
+              onCloseDrawing: () => setDrawingSheet(null),
+              onQtyChange: editQty,
+              onRateChange: editRate,
+              showMoney: permissions.canViewMoney
+            }}
+          />
         ) : (
           <PageStub />
         )}

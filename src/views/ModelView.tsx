@@ -6,8 +6,12 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '../components/Icon';
-import { BqTable, filterBillLines, LineBadge } from '../components/BqPanels';
+import { BqTable, filterBillLines, LineBadge, type BqCeDetail } from '../components/BqPanels';
+import { DraggablePanel } from '../components/DraggablePanel';
+import { loadCeLinks, type CeLink } from '../lib/ceLinks';
+import type { MappingScenario } from '../lib/mappingScenarios';
 import { PanoramaView, PlanSheet, ViewWorkspace, type ElementHud, type WorkspaceView } from '../components/Tiles';
 import { parseMat, type BillLine, type ElementData, type Panorama, type ProjectData, type RuleDef } from '../lib/demo';
 import type { ViewportPaint } from '../three/viewport';
@@ -173,7 +177,9 @@ function BqStrip({
   onRateChange,
   onInspect,
   onClose,
-  showMoney
+  showMoney,
+  pricingLabel = 'Bill of Quantities',
+  projectId
 }: {
   lines: BillLine[];
   activeLine: string;
@@ -185,9 +191,30 @@ function BqStrip({
   onInspect: (id: string) => void;
   onClose: () => void;
   showMoney: boolean;
+  pricingLabel?: string;
+  projectId?: string;
 }) {
   const [query, setQuery] = useState('');
   const shown = filterBillLines(lines, query);
+  const ceDetails: Record<string, BqCeDetail[]> = {};
+  loadCeLinks(projectId).forEach(link => {
+    const allocated = link.itemIds.length
+      ? link.amount / link.itemIds.length
+      : link.amount;
+    link.itemIds.forEach(itemId => {
+      const list = ceDetails[itemId] ?? [];
+      list.push({
+        ceId: link.ceId,
+        ref: link.ceCode,
+        title: link.title,
+        amount: allocated,
+        assessed: allocated,
+        date: link.date,
+        reference: link.reference
+      });
+      ceDetails[itemId] = list;
+    });
+  });
   const drag = useRef<{ y: number; h: number } | null>(null);
   const max = Math.max(180, Math.min(620, window.innerHeight - 170));
 
@@ -197,7 +224,7 @@ function BqStrip({
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!drag.current) return;
-    setHeight(clamp(drag.current.h - (e.clientY - drag.current.y), 120, max));
+    setHeight(clamp(drag.current.h - (e.clientY - drag.current.y), 350, max));
   };
   const up = () => {
     drag.current = null;
@@ -211,21 +238,21 @@ function BqStrip({
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={up}
-        aria-label="Resize BQ panel"
+        aria-label={`Resize ${pricingLabel} panel`}
       />
       <div className="apc-bqpanel__head">
-        <b>Bill of quantities</b>
+        <b>{pricingLabel}</b>
         <div className="apc-bqsearch">
           <Icon name="search" size={12} />
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search BQ items"
-            aria-label="Search BQ items"
+            placeholder={`Search ${pricingLabel} items`}
+            aria-label={`Search ${pricingLabel} items`}
           />
         </div>
         <span style={{ flex: 1 }} />
-        <button className="apc-iconbtn" onClick={onClose} aria-label="Close BQ list">
+        <button className="apc-iconbtn" onClick={onClose} aria-label={`Close ${pricingLabel} list`}>
           <Icon name="x" size={13} />
         </button>
       </div>
@@ -240,6 +267,8 @@ function BqStrip({
           readOnly
           showMoney={showMoney}
           showCe
+          ceDetails={ceDetails}
+          expandCe={false}
         />
       </div>
     </section>
@@ -266,7 +295,9 @@ function BqDetails({
   selectedId,
   onSelect,
   onClose,
-  showMoney
+  showMoney,
+  pricingLabel = 'Bill of Quantities',
+  projectId
 }: {
   line: BillLine;
   data: ProjectData;
@@ -274,11 +305,15 @@ function BqDetails({
   onSelect: (id: string) => void;
   onClose: () => void;
   showMoney: boolean;
+  pricingLabel?: string;
+  projectId?: string;
 }) {
+  const docLabel = pricingLabel === 'Activity Schedule' ? 'Activity Schedule' : 'BQ';
   const [level, setLevel] = useState('all');
   const [zone, setZone] = useState('all');
   const [cls, setCls] = useState('all');
   const [groupsOpen, setGroupsOpen] = useState(true);
+  const [cePopup, setCePopup] = useState<CeLink | null>(null);
   const members = (line.members || [])
     .map(id => data.elements.find(e => e.id === id))
     .filter((e): e is ProjectData['elements'][number] => !!e);
@@ -316,15 +351,24 @@ function BqDetails({
       : group
         ? [{ title: group.label, description: rule?.basis || '' }]
         : [];
+  const ceLinks = loadCeLinks(projectId).filter(link => link.itemIds.includes(line.id));
+  const netCeValue = ceLinks.reduce((sum, link) => sum + link.amount, 0);
+  const netCe = ceLinks.length ? netCeValue : null;
+  const bqOriginal = line.rate == null ? null : contractQty * line.rate;
+  const bimOriginal = line.rate == null ? null : bimQty * line.rate;
+  const finalBq = bqOriginal == null ? null : bqOriginal + netCeValue;
+  const finalBim = bimOriginal == null ? null : bimOriginal + netCeValue;
+  const moneyOrDash = (value: number | null) => (value == null ? '—' : money(value));
   let running = 0;
 
   return (
-    <aside className="apc-bqdetails" aria-label="BQ Details">
+    <>
+    <aside className="apc-bqdetails" aria-label={`${docLabel} Details`}>
       <div className="apc-bqdetails__head">
         <Icon name="list-tree" size={13} />
-        <b>BQ Details</b>
+        <b>{docLabel} Details</b>
         <span style={{ flex: 1 }} />
-        <button className="apc-iconbtn" onClick={onClose} aria-label="Close BQ Details">
+        <button className="apc-iconbtn" onClick={onClose} aria-label={`Close ${docLabel} Details`}>
           <Icon name="x" size={13} />
         </button>
       </div>
@@ -336,17 +380,17 @@ function BqDetails({
 
         <div className="apc-bqdetails__sectionhead">
           <span>1</span>
-          <b>BQ and valuation summary</b>
+          <b>{docLabel} and valuation summary</b>
         </div>
         <div className="apc-tablescroll">
           <table className="apc-grid apc-bqdetails__summary">
           <tbody>
             <tr>
-              <th>BQ item</th>
+              <th>{docLabel} item</th>
               <td>{line.label}</td>
             </tr>
             <tr>
-              <th>Contract BQ qty</th>
+              <th>Contract {docLabel} qty</th>
               <td className="num">
                 {fmtQty(contractQty, line.unit)} <i>{line.unit}</i>
               </td>
@@ -360,7 +404,7 @@ function BqDetails({
                   </td>
                 </tr>
                 <tr>
-                  <th>Contract BQ amount</th>
+                  <th>Contract {docLabel} amount</th>
                   <td className="num">{line.rate == null ? 'Unpriced' : money(contractQty * line.rate)}</td>
                 </tr>
               </>
@@ -372,7 +416,7 @@ function BqDetails({
               </td>
             </tr>
             <tr>
-              <th>BIM vs BQ difference</th>
+              <th>BIM vs {docLabel} difference</th>
               <td className={`num ${diff >= 0 ? 'pos' : 'neg'}`}>
                 {signed(diff)} {line.unit}
                 <em>{pctSigned(diff, contractQty)}</em>
@@ -397,9 +441,9 @@ function BqDetails({
 
         <div className="apc-bqdetails__sectionhead">
           <span>2</span>
-          <b>BQ basis and BIM mapping</b>
+          <b>{docLabel} basis and BIM mapping</b>
         </div>
-        <div className="apc-bqdetails__subhead">A. BQ original and measurement basis</div>
+        <div className="apc-bqdetails__subhead">A. {docLabel} original and measurement basis</div>
         <div className="apc-tablescroll">
           <div className="apc-measuregroups">
             <button
@@ -438,7 +482,7 @@ function BqDetails({
             </tr>
             <tr>
               <th>Basis</th>
-              <td>{rule?.basis || 'Measured from the BQ item description.'}</td>
+              <td>{rule?.basis || `Measured from the ${docLabel} item description.`}</td>
             </tr>
             <tr>
               <th>Source</th>
@@ -446,7 +490,7 @@ function BqDetails({
             </tr>
             <tr>
               <th>Rounding</th>
-              <td>{rule?.rounding || 'Per BQ measurement rules.'}</td>
+              <td>{rule?.rounding || `Per ${docLabel} measurement rules.`}</td>
             </tr>
           </tbody>
         </table>
@@ -459,7 +503,7 @@ function BqDetails({
             </tr>
           </thead>
           <tbody>
-            {[rule?.basis || 'Work described in the BQ item', 'Curing and protection'].map((item, i) => (
+            {[rule?.basis || `Work described in the ${docLabel} item`, 'Curing and protection'].map((item, i) => (
               <tr key={item}>
                 <td className="mono">{i + 1}</td>
                 <td>{item}</td>
@@ -581,6 +625,76 @@ function BqDetails({
 
         <div className="apc-bqdetails__sectionhead">
           <span>3</span>
+          <b>{docLabel} amount changes with CE applied</b>
+        </div>
+        <div className="apc-tablescroll">
+          <table className="apc-grid apc-bqdetails__summary">
+            <tbody>
+              <tr>
+                <th>{docLabel} original amount</th>
+                <td className="num">{moneyOrDash(bqOriginal)}</td>
+              </tr>
+              <tr>
+                <th>BIM original amount</th>
+                <td className="num">{moneyOrDash(bimOriginal)}</td>
+              </tr>
+              <tr>
+                <th>Net CE</th>
+                <td className="num">{moneyOrDash(netCe)}</td>
+              </tr>
+              <tr>
+                <th>Final {docLabel} amount</th>
+                <td className="num">{moneyOrDash(finalBq)}</td>
+              </tr>
+              <tr>
+                <th>Final BIM amount</th>
+                <td className="num">{moneyOrDash(finalBim)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {ceLinks.length ? (
+          <div className="apc-tablescroll">
+            <table className="apc-grid apc-bqdetails__grid apc-bqdetails__payments">
+              <thead>
+                <tr>
+                  <th>CE No.</th>
+                  <th>Date</th>
+                  <th>Reference</th>
+                  <th className="num">Assessed (HK$)</th>
+                  <th className="num">Net CE (HK$)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ceLinks.map(link => (
+                  <tr
+                    key={link.ceId}
+                    className="apc-bqdetails__cerow"
+                    onClick={() => setCePopup(link)}
+                    title="Open CE PDF"
+                  >
+                    <td>{link.ceCode}</td>
+                    <td className="nowrap">{link.date || '—'}</td>
+                    <td>{link.reference || '—'}</td>
+                    <td className="num">{money(link.amount)}</td>
+                    <td className="num">{money(link.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="apc-bqdetails__totals">
+                  <td colSpan={4}>Total net CE</td>
+                  <td className="num">{money(netCeValue)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <div className="apc-bqdetails__empty">No CE linked to this {docLabel} item.</div>
+        )}
+
+        <div className="apc-bqdetails__sectionhead">
+          <span>4</span>
           <b>Period quantity verification</b>
         </div>
         {certs.length ? (
@@ -630,6 +744,44 @@ function BqDetails({
         )}
       </div>
     </aside>
+    {cePopup &&
+      createPortal(
+        <DraggablePanel
+          title={cePopup.ceName || `${cePopup.ceCode}.pdf`}
+          icon="file-text"
+          headerExtra={<span className="apc-cepdf__ref">{cePopup.ceCode}</span>}
+          initial={{ x: 160, y: 80, w: 540, h: 660 }}
+          minWidth={380}
+          minHeight={320}
+          onClose={() => setCePopup(null)}
+        >
+          <div className="apc-cepdf">
+            <div className="apc-cepdf__paper">
+              <header>
+                <span>COMPENSATION EVENT</span>
+                <b>{cePopup.ceCode}</b>
+              </header>
+              <h3>{cePopup.title || 'Compensation event'}</h3>
+              <div className="apc-cepdf__meta">
+                <span>Date <b>{cePopup.date || '—'}</b></span>
+                <span>Reference <b>{cePopup.reference || '—'}</b></span>
+              </div>
+              <div className="apc-cepdf__amount">
+                <span>Assessed amount</span>
+                <b>{money(cePopup.amount)}</b>
+              </div>
+              <p>
+                This compensation event document records the assessed value and the
+                corresponding change to the {docLabel} amount. The linked {docLabel} item
+                detail is shown in the {docLabel} Details panel.
+              </p>
+              <footer>{cePopup.ceName || `${cePopup.ceCode}.pdf`}</footer>
+            </div>
+          </div>
+        </DraggablePanel>,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -1218,7 +1370,7 @@ function ElementProperties({
   );
 }
 
-export function ModelView({
+function ModelWorkspace({
   data,
   active,
   setActive,
@@ -1242,7 +1394,9 @@ export function ModelView({
   onCloseDrawing,
   onQtyChange,
   onRateChange,
-  showMoney
+  showMoney,
+  pricingLabel = 'Bill of Quantities',
+  projectId
 }: {
   data: ProjectData;
   active: string | null;
@@ -1268,8 +1422,10 @@ export function ModelView({
   onQtyChange: (id: string, value: number | null) => void;
   onRateChange: (id: string, value: number | null) => void;
   showMoney: boolean;
+  pricingLabel?: string;
+  projectId?: string;
 }) {
-  const [bqHeight, setBqHeight] = useState(190);
+  const [bqHeight, setBqHeight] = useState(350);
   const [dockWidth, setDockWidth] = useState<number | null>(null);
   const [browserWidth, setBrowserWidth] = useState<number | null>(null);
   const [tiles, setTiles] = useState(false);
@@ -1473,6 +1629,8 @@ export function ModelView({
                               onSelect={id => setActive(id)}
                               onClose={() => setInfoLine(null)}
                               showMoney={showMoney}
+                              pricingLabel={pricingLabel}
+                              projectId={projectId}
                             />
                           )
                         }
@@ -1550,9 +1708,52 @@ export function ModelView({
             onInspect={toggleInfo}
             onClose={onHideBqList}
             showMoney={showMoney}
+            pricingLabel={pricingLabel}
+            projectId={projectId}
           />
         )}
       </div>
     </>
+  );
+}
+
+export type ModelViewProps = Parameters<typeof ModelWorkspace>[0];
+
+export function ModelReview({
+  scenario,
+  onBack,
+  ...props
+}: ModelViewProps & { scenario: MappingScenario; onBack: () => void }) {
+  const scenarioData: ProjectData = {
+    ...props.data,
+    project: {
+      ...props.data.project,
+      name: scenario.projectName,
+      contract: scenario.projectNumber,
+      standard: scenario.standard
+    },
+    files: props.data.files.map((file, index) =>
+      index === 0 && scenario.modelName ? { ...file, name: scenario.modelName } : file
+    )
+  };
+
+  return (
+    <div className="apc-modelworkspace">
+      <button
+        className="apc-modelworkspace__back"
+        onClick={onBack}
+        aria-label="Back to mapping projects"
+      >
+        <Icon name="arrow-left" size={13} />
+        All projects
+      </button>
+      <ModelWorkspace
+        {...props}
+        data={scenarioData}
+        pricingLabel={
+          scenario.sources?.activity ? 'Activity Schedule' : 'Bill of Quantities'
+        }
+      />
+    </div>
   );
 }

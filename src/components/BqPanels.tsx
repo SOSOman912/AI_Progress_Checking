@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { ColGroup, ColResize, useColumnWidths } from './ResizeColumns';
 import type { BillLine } from '../lib/demo';
@@ -16,11 +16,12 @@ const COLS = [
   { key: 'qbim', label: 'Qty (BIM)', num: true, width: 92 },
   { key: 'qty', label: 'Qty', num: true, width: 76 },
   { key: 'rate', label: 'Rate', num: true, width: 88 },
+  { key: 'ce', label: 'CE', num: true, width: 96 },
   { key: 'abim', label: 'Amount HK$ (BIM)', num: true, width: 132 },
   { key: 'amount', label: 'Amount HK$', num: true, width: 108 },
-  { key: 'ce', label: 'CE', num: true, width: 96 }
+  { key: 'final', label: 'Final Amount HK$', num: true, width: 132 }
 ];
-const MONEY_COLS = new Set(['rate', 'abim', 'amount', 'ce']);
+const MONEY_COLS = new Set(['rate', 'abim', 'amount', 'final', 'ce']);
 
 export function filterBillLines(lines: BillLine[], query: string) {
   const q = query.trim().toLowerCase();
@@ -140,6 +141,16 @@ export function LineBadge({ line, showMoney = true }: { line: BillLine; showMone
   );
 }
 
+export interface BqCeDetail {
+  ceId?: string;
+  ref: string;
+  title: string;
+  amount?: number;
+  date?: string;
+  reference?: string;
+  assessed?: number;
+}
+
 export function BqTable({
   lines,
   activeLine,
@@ -150,6 +161,10 @@ export function BqTable({
   readOnly = false,
   showMoney = true,
   showCe = false,
+  ceDetails,
+  onOpenCe,
+  expandCe = true,
+  colWidths,
   affectedIds
 }: {
   lines: BillLine[];
@@ -161,13 +176,22 @@ export function BqTable({
   readOnly?: boolean;
   showMoney?: boolean;
   showCe?: boolean;
+  ceDetails?: Record<string, BqCeDetail[]>;
+  onOpenCe?: (ceId: string) => void;
+  expandCe?: boolean;
+  colWidths?: Partial<Record<string, number>>;
   affectedIds?: { missing?: string[]; override?: string[] };
 }) {
-  const baseCols = showCe ? COLS : COLS.filter(c => c.key !== 'ce');
+  const baseCols = showCe
+    ? COLS
+    : COLS.filter(c => c.key !== 'ce' && c.key !== 'final');
   const cols = showMoney ? baseCols : baseCols.filter(c => !MONEY_COLS.has(c.key));
-  const { widths, start, move, end, total } = useColumnWidths(cols.map(c => c.width));
+  const { widths, start, move, end, total } = useColumnWidths(
+    cols.map(c => colWidths?.[c.key] ?? c.width)
+  );
   const box = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState(0);
+  const [expandedCe, setExpandedCe] = useState('');
 
   useEffect(() => {
     const node = box.current;
@@ -209,7 +233,9 @@ export function BqTable({
             if (l.type === 'group')
               return (
                 <tr key={l.id} className="apc-bqtable__grp">
-                  <td colSpan={cols.length}>{l.label}</td>
+                  <td className="apc-bqtable__grpname" colSpan={cols.length}>
+                    {l.label}
+                  </td>
                 </tr>
               );
             if (l.type !== 'item') return null;
@@ -222,41 +248,98 @@ export function BqTable({
               : affectedIds?.override?.includes(l.id)
                 ? 'override'
                 : null;
+            const details = ceDetails?.[l.id] ?? [];
+            const open = expandedCe === l.id;
+            const ceTotal = details.reduce(
+              (sum, detail) => sum + (detail.assessed ?? detail.amount ?? 0),
+              0
+            );
+            const finalAmount = amount == null ? null : amount + ceTotal;
             return (
-              <tr
-                key={l.id}
-                className={`apc-bqtable__item${activeLine === l.id ? ' on' : ''}${affected ? ` affected affected--${affected}` : ''}`}
-                onClick={() => {
-                  setActiveLine(l.id);
-                  onInspect?.(l.id);
-                }}
-              >
-                <td className="mono" title={l.no}>
-                  {l.no}
-                </td>
-                <td title={l.label}>{l.label}</td>
-                <td>{l.unit}</td>
-                <td className="num">{fq(bimQty, l.unit || '')}</td>
-                <td className="num">
-                  {!readOnly && onQtyChange ? (
-                    <EditableNumber value={qty} unit={l.unit || ''} mode="qty" onCommit={v => onQtyChange(l.id, v)} />
-                  ) : (
-                    fq(qty, l.unit || '')
-                  )}
-                </td>
-                {showMoney && (
+              <Fragment key={l.id}>
+                <tr
+                  className={`apc-bqtable__item${activeLine === l.id ? ' on' : ''}${affected ? ` affected affected--${affected}` : ''}`}
+                  onClick={() => {
+                    setActiveLine(l.id);
+                    onInspect?.(l.id);
+                    if (expandCe && details.length) setExpandedCe(open ? '' : l.id);
+                  }}
+                >
+                  <td className="mono apc-bqtable__itemno" title={l.no}>
+                    <span>{l.no}</span>
+                  </td>
+                  <td title={l.label}>{l.label}</td>
+                  <td>{l.unit}</td>
+                  <td className="num">{fq(bimQty, l.unit || '')}</td>
                   <td className="num">
-                    {!readOnly && onRateChange ? (
-                      <EditableNumber value={l.rate ?? null} unit={l.unit || ''} mode="rate" onCommit={v => onRateChange(l.id, v)} />
+                    {!readOnly && onQtyChange ? (
+                      <EditableNumber value={qty} unit={l.unit || ''} mode="qty" onCommit={v => onQtyChange(l.id, v)} />
                     ) : (
-                      l.rate == null ? '—' : f2(l.rate)
+                      fq(qty, l.unit || '')
                     )}
                   </td>
+                  {showMoney && (
+                    <td className="num">
+                      {!readOnly && onRateChange ? (
+                        <EditableNumber value={l.rate ?? null} unit={l.unit || ''} mode="rate" onCommit={v => onRateChange(l.id, v)} />
+                      ) : (
+                        l.rate == null ? '—' : f2(l.rate)
+                      )}
+                    </td>
+                  )}
+                  {showCe && showMoney && (
+                    <td className="num" title={details.length ? 'Click the row to view linked CEs' : undefined}>
+                      {details.length ? f2(ceTotal) : '—'}
+                    </td>
+                  )}
+                  {showMoney && <td className="num">{bimAmount == null ? '—' : f2(bimAmount)}</td>}
+                  {showMoney && <td className="num">{amount == null ? 'Unpriced' : f2(amount)}</td>}
+                  {showMoney && (
+                    <td className="num">{finalAmount == null ? 'Unpriced' : f2(finalAmount)}</td>
+                  )}
+                </tr>
+                {showCe && expandCe && open && details.length > 0 && (
+                  <tr className="apc-ce-detail apc-bq-ce-expand">
+                    <td colSpan={cols.length}>
+                      <div className="apc-ce-detail-card">
+                        <div className="apc-ce-detail-card__head">
+                          <Icon name="layout-grid" size={12} />
+                          <b>CE Detail</b>
+                        </div>
+                        <table className="apc-ce-detail-card__table">
+                          <thead>
+                            <tr>
+                              <th>CE No.</th>
+                              <th>Description</th>
+                              <th>Date</th>
+                              <th>Reference</th>
+                              <th className="num">Allocated Amount (HK$)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {details.map(detail => (
+                              <tr
+                                key={detail.ceId ?? detail.ref}
+                                className={detail.ceId ? 'is-openable' : undefined}
+                                onClick={() => {
+                                  if (detail.ceId) onOpenCe?.(detail.ceId);
+                                }}
+                                title={detail.ceId ? 'Open CE AI OCR result' : undefined}
+                              >
+                                <td className="mono">{detail.ref}</td>
+                                <td>{detail.title || 'Compensation event'}</td>
+                                <td>{detail.date || '—'}</td>
+                                <td>{detail.reference || '—'}</td>
+                                <td className="num">{f2(detail.assessed ?? detail.amount ?? 0)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
                 )}
-                {showMoney && <td className="num">{bimAmount == null ? '—' : f2(bimAmount)}</td>}
-                {showMoney && <td className="num">{amount == null ? 'Unpriced' : f2(amount)}</td>}
-                {showCe && showMoney && <td className="num">{f2(l.ce)}</td>}
-              </tr>
+              </Fragment>
             );
           })}
         </tbody>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../components/Icon';
+import { projectStorageKey } from '../lib/projectStorage';
 import {
   SMM_ITEMS,
   SMM_SECTIONS,
@@ -190,7 +191,6 @@ function MappingRows({
         <section className="apc-libsample">
           <div className="apc-libsample__head">
             <b>Sample values</b>
-            <span>Use the current mapping rows to check the extracted pieces.</span>
           </div>
           <div className="apc-libsample__fields">
             {attributes.map(attribute => (
@@ -244,14 +244,51 @@ function MappingRows({
   );
 }
 
-export function MeasurementLibrary() {
+const STORAGE_BASE = 'apc.measurement-library.v2';
+
+const defaultLibraryRows = (): Record<string, MeasureMapRow[]> =>
+  Object.fromEntries(SMM_ITEMS.map(item => [item.id, defaultRows(item.id)]));
+
+const loadLibraryRows = (projectId?: string): Record<string, MeasureMapRow[]> => {
+  const defaults = defaultLibraryRows();
+  try {
+    const raw = window.localStorage.getItem(
+      projectStorageKey(STORAGE_BASE, projectId)
+    );
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Record<string, MeasureMapRow[]>;
+    if (!parsed || typeof parsed !== 'object') return defaults;
+    Object.keys(defaults).forEach(id => {
+      if (Array.isArray(parsed[id])) defaults[id] = parsed[id];
+    });
+    return defaults;
+  } catch {
+    return defaults;
+  }
+};
+
+export function MeasurementLibrary({ projectId }: { projectId?: string }) {
   const [standard, setStandard] = useState<SmmStandard>('cesmm');
   const [query, setQuery] = useState('');
   const [openSections, setOpenSections] = useState<Record<number, boolean>>({ 12: true });
   const [selected, setSelected] = useState('s12-insitu');
   const [rows, setRows] = useState<Record<string, MeasureMapRow[]>>(() =>
-    Object.fromEntries(SMM_ITEMS.map(item => [item.id, defaultRows(item.id)]))
+    loadLibraryRows(projectId)
   );
+  const [saved, setSaved] = useState(false);
+
+  const saveSettings = () => {
+    try {
+      window.localStorage.setItem(
+        projectStorageKey(STORAGE_BASE, projectId),
+        JSON.stringify(rows)
+      );
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch {
+      setSaved(false);
+    }
+  };
 
   const q = query.trim().toLowerCase();
   const matches = (item: SmmItem) =>
@@ -272,8 +309,7 @@ export function MeasurementLibrary() {
       <main className="apc-page apc-librarypage">
         <div className="apc-libhead">
           <div>
-            <b>Measurement Library</b>
-            <span>SMM measurement groups and IFC attribute mapping.</span>
+            <h1>Measurement Library</h1>
           </div>
           <label className="apc-libstd">
             SMM type
@@ -282,6 +318,10 @@ export function MeasurementLibrary() {
               <option value="hksmm">HKSMM</option>
             </select>
           </label>
+          <button className="apc-libsave" onClick={saveSettings}>
+            <Icon name={saved ? 'check' : 'save'} size={13} />
+            {saved ? 'Saved' : 'Save changes'}
+          </button>
         </div>
         <div className="apc-libempty apc-libempty--page">No HKSMM section has been analysed yet.</div>
       </main>
@@ -292,8 +332,7 @@ export function MeasurementLibrary() {
     <main className="apc-page apc-librarypage">
       <div className="apc-libhead">
         <div>
-          <b>Measurement Library</b>
-          <span>SMM measurement groups and IFC attribute mapping.</span>
+          <h1>Measurement Library</h1>
         </div>
         <label className="apc-libstd">
           SMM type
@@ -309,6 +348,10 @@ export function MeasurementLibrary() {
           placeholder="Search sections, items or groups"
           aria-label="Search measurement library"
         />
+        <button className="apc-libsave" onClick={saveSettings}>
+          <Icon name={saved ? 'check' : 'save'} size={13} />
+          {saved ? 'Saved' : 'Save changes'}
+        </button>
       </div>
 
       <div className="apc-libbody">
@@ -361,7 +404,7 @@ export function MeasurementLibrary() {
           {item ? (
             <>
               <div className="apc-libdetail__head">
-                <h1>{item.name}</h1>
+                <h2>{item.name}</h2>
               </div>
 
               <div className="apc-libsectionhead">
